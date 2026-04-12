@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LILIWATT — Prospection</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:100vh}
+.header{background:linear-gradient(135deg,#1e1b4b,#7c3aed);padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+.header h1{color:#fff;font-size:20px;font-weight:800;letter-spacing:3px}
+.header .user-info{color:rgba(255,255,255,.8);font-size:12px;display:flex;align-items:center;gap:12px}
+.header button{background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px}
+.container{max-width:1100px;margin:0 auto;padding:20px}
+.kpis{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.kpi{background:#fff;border-radius:12px;padding:14px 20px;box-shadow:0 2px 8px rgba(124,58,237,.06);flex:1;min-width:140px;text-align:center}
+.kpi .val{font-size:24px;font-weight:800;color:#7c3aed}
+.kpi .label{font-size:11px;color:#6b7280;margin-top:2px}
+.filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.filters input,.filters select{padding:8px 12px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:13px;outline:none}
+.filters input:focus,.filters select:focus{border-color:#7c3aed}
+table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+thead{background:#1e1b4b;color:#fff}
+th{padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+td{padding:10px 12px;border-bottom:1px solid #f3f0ff}
+tr:hover{background:#faf5ff;cursor:pointer}
+.badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+.b-green{background:#f0fdf4;color:#22c55e}.b-orange{background:#fef3c7;color:#f59e0b}
+.b-red{background:#fef2f2;color:#ef4444}.b-gray{background:#f3f4f6;color:#6b7280}
+.b-blue{background:#eff6ff;color:#2563eb}
+/* Login */
+.login-box{max-width:400px;margin:80px auto;background:#fff;border-radius:16px;padding:40px;box-shadow:0 8px 32px rgba(124,58,237,.1);text-align:center}
+.login-box h2{color:#1e1b4b;margin-bottom:24px;font-size:22px}
+.login-box input{width:100%;padding:12px;border:2px solid #e9d5ff;border-radius:10px;font-size:14px;margin-bottom:12px;outline:none}
+.login-box input:focus{border-color:#7c3aed}
+.login-box button{width:100%;padding:14px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer}
+.login-box .err{color:#ef4444;font-size:13px;margin-top:8px;display:none}
+/* Modal */
+.modal-bg{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:1000;overflow-y:auto}
+.modal-box{background:#fff;border-radius:16px;padding:32px;max-width:500px;width:90%;margin:60px auto}
+.modal-box h3{color:#1e1b4b;margin-bottom:16px}
+.modal-box .close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af}
+.stat-btns{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.stat-btns button{padding:8px 14px;border:2px solid #e9d5ff;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;transition:all .15s}
+.stat-btns button:hover{border-color:#7c3aed;background:#f5f3ff}
+.stat-btns button.active{background:#7c3aed;color:#fff;border-color:#7c3aed}
+textarea{width:100%;padding:10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:13px;resize:vertical;min-height:60px;outline:none}
+textarea:focus{border-color:#7c3aed}
+.hidden{display:none}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginPage">
+  <div class="header"><h1>LILIWATT</h1><span style="color:rgba(255,255,255,.7);font-size:12px;">Prospection</span></div>
+  <div class="login-box">
+    <h2>Connexion</h2>
+    <input type="email" id="loginEmail" placeholder="Email @liliwatt.fr">
+    <input type="password" id="loginPwd" placeholder="Mot de passe">
+    <button onclick="doLogin()">Se connecter</button>
+    <p class="err" id="loginErr"></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appPage" class="hidden">
+  <div class="header">
+    <h1>LILIWATT</h1>
+    <div class="user-info">
+      <span id="userName"></span>
+      <button onclick="logout()">Déconnexion</button>
+    </div>
+  </div>
+  <div class="container">
+    <!-- KPIs -->
+    <div class="kpis">
+      <div class="kpi"><div class="val" id="kpiTotal">0</div><div class="label">Prospects</div></div>
+      <div class="kpi"><div class="val" id="kpiInteresse">0</div><div class="label">Intéressés</div></div>
+      <div class="kpi"><div class="val" id="kpiRappel">0</div><div class="label">À rappeler</div></div>
+      <div class="kpi"><div class="val" id="kpiContact">0%</div><div class="label">Taux contact</div></div>
+    </div>
+
+    <!-- Filtres -->
+    <div class="filters">
+      <input type="text" id="fSearch" placeholder="🔍 Rechercher..." oninput="renderTable()">
+      <select id="fStatut" onchange="renderTable()">
+        <option value="">Tous statuts</option>
+        <option value="non_traite">Non traité</option>
+        <option value="interesse">✅ Intéressé</option>
+        <option value="a_rappeler">🔄 À rappeler</option>
+        <option value="pas_interesse">❌ Pas intéressé</option>
+        <option value="faux_numero">📵 Faux numéro</option>
+        <option value="ne_repond_pas">📭 Ne répond pas</option>
+      </select>
+      <select id="fSegment" onchange="renderTable()"><option value="">Tous segments</option></select>
+    </div>
+
+    <!-- Tableau -->
+    <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Société</th><th>Contact</th><th>Tél</th><th>Segment</th><th>Fin contrat</th><th>Statut</th></tr></thead>
+        <tbody id="tableBody"><tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:32px;">Chargement...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Appel -->
+<div class="modal-bg" id="modalAppel">
+  <div class="modal-box">
+    <button class="close" onclick="closeModal()">✕</button>
+    <h3 id="modalTitle"></h3>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:4px;" id="modalInfo"></p>
+    <p style="font-size:15px;font-weight:700;color:#7c3aed;margin-bottom:16px;" id="modalTel"></p>
+
+    <label style="font-size:12px;font-weight:600;color:#6b7280;">Résultat de l'appel</label>
+    <div class="stat-btns" id="statutBtns">
+      <button onclick="setStatut('interesse')">✅ Intéressé</button>
+      <button onclick="setStatut('a_rappeler')">🔄 À rappeler</button>
+      <button onclick="setStatut('pas_interesse')">❌ Pas intéressé</button>
+      <button onclick="setStatut('faux_numero')">📵 Faux numéro</button>
+      <button onclick="setStatut('ne_repond_pas')">📭 Ne répond pas</button>
+    </div>
+
+    <div id="rappelSection" class="hidden" style="margin:10px 0;">
+      <label style="font-size:12px;font-weight:600;color:#6b7280;">Date de rappel</label>
+      <input type="datetime-local" id="dateRappel" style="width:100%;padding:8px;border:1.5px solid #e9d5ff;border-radius:8px;margin-top:4px;">
+    </div>
+
+    <label style="font-size:12px;font-weight:600;color:#6b7280;margin-top:10px;display:block;">Note</label>
+    <textarea id="noteAppel" placeholder="Notes sur l'appel..."></textarea>
+
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button onclick="saveAppel()" style="flex:1;padding:12px;background:#7c3aed;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;">💾 Enregistrer</button>
+      <button onclick="sendRgpd()" style="padding:12px 20px;background:#d946ef;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;" id="btnRgpd">📧 RGPD</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let token = localStorage.getItem('prospection_token');
+let user = JSON.parse(localStorage.getItem('prospection_user') || 'null');
+let prospects = [];
+let currentRow = null;
+let currentStatut = '';
+
+if (token && user) showApp();
+else showLogin();
+
+function showLogin() { document.getElementById('loginPage').classList.remove('hidden'); document.getElementById('appPage').classList.add('hidden'); }
+function showApp() { document.getElementById('loginPage').classList.add('hidden'); document.getElementById('appPage').classList.remove('hidden'); document.getElementById('userName').textContent = user.nom; loadProspects(); }
+
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value;
+  const pwd = document.getElementById('loginPwd').value;
+  const err = document.getElementById('loginErr');
+  try {
+    const r = await fetch('/api/auth/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ email, password: pwd }) });
+    const d = await r.json();
+    if (d.success) {
+      token = d.token; user = d.user;
+      localStorage.setItem('prospection_token', token);
+      localStorage.setItem('prospection_user', JSON.stringify(user));
+      showApp();
+    } else { err.style.display = 'block'; err.textContent = d.error; }
+  } catch(e) { err.style.display = 'block'; err.textContent = 'Erreur réseau'; }
+}
+
+function logout() { localStorage.removeItem('prospection_token'); localStorage.removeItem('prospection_user'); token=null; user=null; showLogin(); }
+
+async function loadProspects() {
+  try {
+    const r = await fetch('/api/mes-prospects', { headers: { 'Authorization': 'Bearer ' + token } });
+    const d = await r.json();
+    if (d.error === 'Token invalide') { logout(); return; }
+    prospects = d.prospects || [];
+    // Segments dropdown
+    const segs = [...new Set(prospects.map(p => p.typologie_contrat || p.segments || '').filter(Boolean))];
+    document.getElementById('fSegment').innerHTML = '<option value="">Tous segments</option>' + segs.map(s => '<option>'+s+'</option>').join('');
+    renderTable();
+  } catch(e) { console.error(e); }
+}
+
+function renderTable() {
+  const search = (document.getElementById('fSearch').value || '').toLowerCase();
+  const fStatut = document.getElementById('fStatut').value;
+  const fSeg = document.getElementById('fSegment').value;
+
+  let filtered = prospects.filter(p => {
+    if (search) {
+      const hay = [p.raison_sociale, p.signataire, p.dirigeant, p.tel_signataire, p.siren, p.adresse].join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    const st = p.statut_appel || '';
+    if (fStatut === 'non_traite' && st) return false;
+    else if (fStatut && fStatut !== 'non_traite' && st !== fStatut) return false;
+    if (fSeg && (p.typologie_contrat || p.segments || '') !== fSeg) return false;
+    return true;
+  });
+
+  // KPIs
+  const total = prospects.length;
+  const interesse = prospects.filter(p => p.statut_appel === 'interesse').length;
+  const rappel = prospects.filter(p => p.statut_appel === 'a_rappeler').length;
+  const contacte = prospects.filter(p => p.statut_appel && p.statut_appel !== '').length;
+  document.getElementById('kpiTotal').textContent = total;
+  document.getElementById('kpiInteresse').textContent = interesse;
+  document.getElementById('kpiRappel').textContent = rappel;
+  document.getElementById('kpiContact').textContent = total ? Math.round(contacte/total*100) + '%' : '0%';
+
+  const statusBadge = (s) => {
+    if (s === 'interesse') return '<span class="badge b-green">✅ Intéressé</span>';
+    if (s === 'a_rappeler') return '<span class="badge b-orange">🔄 À rappeler</span>';
+    if (s === 'pas_interesse') return '<span class="badge b-red">❌ Pas intéressé</span>';
+    if (s === 'faux_numero') return '<span class="badge b-gray">📵 Faux n°</span>';
+    if (s === 'ne_repond_pas') return '<span class="badge b-blue">📭 Pas de rép.</span>';
+    return '<span class="badge b-gray">—</span>';
+  };
+
+  document.getElementById('tableBody').innerHTML = filtered.slice(0, 200).map((p, i) => {
+    const contact = p.signataire || p.dirigeant || '—';
+    const tel = p.tel_signataire || '—';
+    const seg = p.typologie_contrat || p.segments || '—';
+    const fin = p.date_fin_livraison || '—';
+    return `<tr onclick="openModal(${prospects.indexOf(p)})">
+      <td style="font-weight:600;color:#1e1b4b;">${p.raison_sociale || '—'}</td>
+      <td>${contact}</td>
+      <td style="color:#7c3aed;font-weight:600;">${tel}</td>
+      <td><span class="badge b-blue">${seg}</span></td>
+      <td>${fin}</td>
+      <td>${statusBadge(p.statut_appel)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:32px;">Aucun prospect</td></tr>';
+}
+
+function openModal(idx) {
+  const p = prospects[idx];
+  currentRow = p._row;
+  currentStatut = p.statut_appel || '';
+  document.getElementById('modalTitle').textContent = p.raison_sociale || 'Prospect';
+  document.getElementById('modalInfo').textContent = (p.signataire || p.dirigeant || '') + ' — ' + (p.adresse || '');
+  document.getElementById('modalTel').textContent = p.tel_signataire ? '📞 ' + p.tel_signataire : 'Pas de téléphone';
+  document.getElementById('noteAppel').value = p.note_appel || '';
+  document.getElementById('btnRgpd').style.display = p.email_signataire ? 'block' : 'none';
+  // Reset statut buttons
+  document.querySelectorAll('#statutBtns button').forEach(b => b.classList.remove('active'));
+  if (currentStatut) {
+    document.querySelectorAll('#statutBtns button').forEach(b => { if (b.onclick.toString().includes(currentStatut)) b.classList.add('active'); });
+  }
+  document.getElementById('rappelSection').classList.toggle('hidden', currentStatut !== 'a_rappeler');
+  document.getElementById('modalAppel').style.display = 'block';
+}
+
+function closeModal() { document.getElementById('modalAppel').style.display = 'none'; }
+
+function setStatut(s) {
+  currentStatut = s;
+  document.querySelectorAll('#statutBtns button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('rappelSection').classList.toggle('hidden', s !== 'a_rappeler');
+}
+
+async function saveAppel() {
+  if (!currentRow) return;
+  const note = document.getElementById('noteAppel').value;
+  const rappel = document.getElementById('dateRappel').value;
+  try {
+    if (currentStatut) await fetch('/api/prospect/' + currentRow + '/statut', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ statut: currentStatut }) });
+    if (note) await fetch('/api/prospect/' + currentRow + '/note', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ note }) });
+    if (rappel && currentStatut === 'a_rappeler') await fetch('/api/prospect/' + currentRow + '/rappel', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ date_rappel: rappel }) });
+    closeModal();
+    loadProspects();
+  } catch(e) { alert('Erreur: ' + e.message); }
+}
+
+async function sendRgpd() {
+  const p = prospects.find(p => p._row === currentRow);
+  if (!p || !p.email_signataire) { alert('Pas d\'email pour ce prospect'); return; }
+  if (!confirm('Envoyer le mail RGPD à ' + p.email_signataire + ' ?')) return;
+  try {
+    const r = await fetch('/api/prospect/' + currentRow + '/rgpd', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ email_client: p.email_signataire, raison_sociale: p.raison_sociale }) });
+    const d = await r.json();
+    if (d.success) alert('✅ Mail RGPD envoyé !');
+    else alert('❌ ' + d.error);
+  } catch(e) { alert('Erreur réseau'); }
+}
+</script>
+</body>
+</html>
