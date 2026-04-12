@@ -60,30 +60,62 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // ===== PROSPECTS =====
-// GET /api/mes-prospects
+// GET /api/mes-prospects — optimisé pour gros sheets
 app.get('/api/mes-prospects', verifyToken, async (req, res) => {
   try {
     if (!MASTER_SHEET_ID) return res.status(503).json({ error: 'MASTER_SHEET_ID non configuré' });
     const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: 'A:AZ' });
-    const rows = r.data.values || [];
-    if (rows.length < 2) return res.json({ success: true, prospects: [] });
 
-    const headers = rows[0];
+    const isAdmin = req.user.role === 'admin' ||
+      req.user.email === 'johan.mallet@liliwatt.fr' ||
+      req.user.email === 'kevin.moreau@liliwatt.fr';
+
+    // 1. En-têtes
+    const headersRes = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: 'A1:BZ1' });
+    const headers = headersRes.data.values[0] || [];
     const vendeurCol = headers.findIndex(h => h.toLowerCase().includes('vendeur_attribue'));
-    const prospects = [];
 
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      // Filtre par vendeur si la colonne existe
-      if (vendeurCol >= 0 && row[vendeurCol] && row[vendeurCol].toLowerCase() !== req.user.email.toLowerCase()) continue;
-
-      const obj = { _row: i + 1 };
-      headers.forEach((h, j) => { obj[h] = row[j] || ''; });
-      prospects.push(obj);
+    if (isAdmin) {
+      // Admin : 200 premières lignes
+      const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: 'A2:BZ201' });
+      const rows = r.data.values || [];
+      const prospects = rows.map((row, i) => {
+        const obj = { _row: i + 2 };
+        headers.forEach((h, j) => { obj[h] = row[j] || ''; });
+        return obj;
+      });
+      return res.json({ success: true, prospects, total: prospects.length });
     }
 
-    res.json({ success: true, prospects, total: prospects.length });
+    // Vendeur : lire uniquement la colonne vendeur_attribue
+    if (vendeurCol < 0) return res.json({ success: true, prospects: [], total: 0 });
+
+    const colName = colLetter(vendeurCol);
+    const vendeurColRes = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: `${colName}2:${colName}40000` });
+    const vendeurValues = vendeurColRes.data.values || [];
+
+    const rowNumbers = [];
+    vendeurValues.forEach((cell, i) => {
+      if ((cell[0] || '').toLowerCase().trim() === req.user.email.toLowerCase().trim()) {
+        rowNumbers.push(i + 2);
+      }
+    });
+
+    if (rowNumbers.length === 0) return res.json({ success: true, prospects: [], total: 0 });
+
+    // Lire seulement les lignes attribuées (max 50)
+    const targetRows = rowNumbers.slice(0, 50);
+    const ranges = targetRows.map(n => `A${n}:BZ${n}`);
+    const batchRes = await sheets.spreadsheets.values.batchGet({ spreadsheetId: MASTER_SHEET_ID, ranges });
+
+    const prospects = (batchRes.data.valueRanges || []).map((vr, i) => {
+      const row = (vr.values || [[]])[0] || [];
+      const obj = { _row: targetRows[i] };
+      headers.forEach((h, j) => { obj[h] = row[j] || ''; });
+      return obj;
+    });
+
+    res.json({ success: true, prospects, total: rowNumbers.length });
   } catch(e) { console.error('Prospects error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
