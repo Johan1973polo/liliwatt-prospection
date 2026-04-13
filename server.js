@@ -367,5 +367,108 @@ app.get('/api/admin/stats', verifyToken, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== ADMIN SCRAPER =====
+const isAdminMW = (req, res, next) => {
+  const a = req.user.role === 'admin' || req.user.email === 'johan.mallet@liliwatt.fr' || req.user.email === 'kevin.moreau@liliwatt.fr';
+  if (!a) return res.status(403).json({ error: 'Admin only' });
+  next();
+};
+
+app.post('/api/admin/scraper', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const { ville, secteur } = req.body;
+    if (!ville || !secteur) return res.status(400).json({ error: 'ville et secteur requis' });
+
+    // Vérifier log
+    const fs = require('fs');
+    const logFile = '/Users/strategyglobal/Desktop/scraping_log.json';
+    let log = {};
+    try { log = JSON.parse(fs.readFileSync(logFile, 'utf8')); } catch(e) {}
+    const key = `${secteur}_${ville.toLowerCase().replace(/\s/g,'_')}`;
+    if (log[key]) {
+      return res.json({ success: false, deja_fait: true, date: log[key] });
+    }
+
+    const { execSync } = require('child_process');
+    const script = '/Users/strategyglobal/Desktop/scraper_google_places.py';
+    const output = execSync(`python3 "${script}" ${secteur} "${ville}"`, { timeout: 120000, cwd: '/Users/strategyglobal/Desktop' }).toString();
+
+    let trouves = 0, nouveaux = 0;
+    for (const line of output.split('\n')) {
+      const m1 = line.match(/(\d+) trouvés/); if (m1) trouves = parseInt(m1[1]);
+      const m2 = line.match(/(\d+) nouvelles/); if (m2) nouveaux = parseInt(m2[1]);
+    }
+    console.log(`⚡ Scraping ${secteur}/${ville}: ${trouves} trouvés, ${nouveaux} ajoutés`);
+    res.json({ success: true, trouves, nouveaux });
+  } catch(e) {
+    console.error('Scraper error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Vendeurs list for admin dropdown
+app.get('/api/admin/vendeurs-list', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SHEETS_MDP_ID, range: 'A:K' });
+    const rows = r.data.values || [];
+    const vendeurs = [];
+    for (const row of rows) {
+      if (row[3] && row[3].includes('@') && (row[10] || 'actif') !== 'inactif') {
+        vendeurs.push({ nom: row[0] || '', prenom: row[1] || '', email: row[3], role: row[9] || 'vendeur' });
+      }
+    }
+    res.json({ success: true, vendeurs });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Leads OHM
+app.get('/api/admin/leads-ohm', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    let rows;
+    try { rows = await getSheetData('LEADS OHM'); } catch(e) { return res.json({ success: true, prospects: [] }); }
+    if (rows.length < 2) return res.json({ success: true, prospects: [] });
+    const headers = rows[0];
+    const segF = (req.query.segment || '').toUpperCase();
+    const anneeF = req.query.annee_fin || '';
+    const nonAttr = req.query.non_attribues === 'true';
+    const perPage = Math.min(parseInt(req.query.per_page || '20'), 50);
+
+    const g = (row, name) => { const i = headers.indexOf(name); return i >= 0 && i < row.length ? row[i] : ''; };
+    const gI = (row, names) => { for (const n of names) { const v = g(row, n); if (v) return v; } return ''; };
+
+    const prospects = [];
+    for (let i = 1; i < rows.length && prospects.length < perPage; i++) {
+      const row = rows[i];
+      if (segF) { const s = (gI(row, ['segments', 'typologie_contrat']) || '').toUpperCase(); if (!s.includes(segF)) continue; }
+      if (anneeF && !(g(row, 'date_fin_livraison') || '').includes(anneeF)) continue;
+      if (nonAttr && (g(row, 'vendeur_attribue') || '').trim()) continue;
+      const obj = { _row: i + 1 };
+      headers.forEach((h, j) => { obj[h] = row[j] || ''; });
+      prospects.push(obj);
+    }
+    res.json({ success: true, prospects });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Attribuer leads
+app.post('/api/admin/attribuer-leads', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const { rows: rowsList, vendeur_email } = req.body;
+    if (!rowsList || !vendeur_email) return res.status(400).json({ error: 'rows et vendeur requis' });
+    if (rowsList.length > 20) return res.status(400).json({ error: 'Max 20 leads' });
+
+    let headers;
+    try { const data = await getSheetData('LEADS OHM'); headers = data[0]; } catch(e) { return res.status(500).json({ error: 'Feuille LEADS OHM introuvable' }); }
+
+    const col = await ensureColumn('LEADS OHM', 'vendeur_attribue');
+    for (const row of rowsList) {
+      await updateCell('LEADS OHM', row, col, vendeur_email);
+    }
+    console.log(`⭐ ${rowsList.length} leads attribués à ${vendeur_email}`);
+    res.json({ success: true, attribues: rowsList.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.listen(port, () => console.log(`🚀 LILIWATT Prospection sur http://localhost:${port}`));

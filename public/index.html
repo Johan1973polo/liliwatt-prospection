@@ -141,6 +141,43 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         <h4 style="color:#1e1b4b;margin:16px 0 8px;">Par vendeur</h4>
         <div id="adminVendeurs" style="font-size:12px;"></div>
       </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h3 style="color:#1e1b4b;margin-bottom:12px;">⚡ Recharger BASE BRUTE</h3>
+        <div style="display:flex;gap:10px;margin-bottom:12px;">
+          <input type="text" id="scrapVille" placeholder="Ex: Lyon, Marseille..." style="flex:1;padding:8px 12px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:13px;">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;">
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="restaurant" checked> Restaurant</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="hotel" checked> Hôtel</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="boulangerie" checked> Boulangerie</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="laverie"> Laverie</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="garage"> Garage</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="salle_sport"> Salle de sport</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="spa_bien_etre"> Spa</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="bar_discoteque"> Bar/Disco</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="camping"> Camping</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="supermarche"> Supermarché</label>
+        </div>
+        <button class="btn" onclick="lancerScrap()" style="width:100%;">⚡ Lancer le scraping</button>
+        <div id="scrapResult" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h3 style="color:#1e1b4b;margin-bottom:12px;">⭐ Attribuer LEADS OHM</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <select id="leadVendeur" style="padding:7px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Vendeur cible...</option></select>
+          <select id="leadSeg" style="padding:7px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Tous segments</option><option>C2</option><option>C3</option><option>C4</option><option>C5</option><option>GAZ</option></select>
+          <select id="leadAnnee" style="padding:7px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Toutes années</option><option>2025</option><option>2026</option><option>2027</option><option>2028</option><option>2029</option></select>
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="leadNonAttr" checked> Non attribués</label>
+          <input type="number" id="leadQuota" value="20" max="20" min="1" style="width:60px;padding:7px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;">
+          <button class="btn btn-sm" onclick="searchLeads()">🔍 Rechercher</button>
+        </div>
+        <div id="leadsTable" style="font-size:12px;overflow-x:auto;"></div>
+        <div id="leadsAction" style="display:none;margin-top:10px;">
+          <button class="btn btn-pink" onclick="attribLeads()" id="btnAttrib" style="width:100%;"></button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -386,8 +423,9 @@ async function loadKpis(){
   }catch(e){}
 }
 
-// ===== ADMIN STATS =====
+// ===== ADMIN =====
 async function loadAdminStats() {
+  loadAdminVendeurDropdown();
   try {
     const r = await fetch('/api/admin/stats', { headers: { 'Authorization': 'Bearer ' + token } });
     const d = await r.json();
@@ -411,6 +449,86 @@ async function loadAdminStats() {
       document.getElementById('adminVendeurs').innerHTML = '<p style="color:#9ca3af;">Aucun vendeur actif</p>';
     }
   } catch(e) {}
+}
+
+// ===== ADMIN SCRAPER =====
+async function lancerScrap() {
+  const ville = document.getElementById('scrapVille').value.trim();
+  if (!ville) { alert('Ville requise'); return; }
+  const secteurs = [...document.querySelectorAll('.scrap_sec:checked')].map(c => c.value);
+  if (!secteurs.length) { alert('Sélectionnez au moins un secteur'); return; }
+  const div = document.getElementById('scrapResult');
+  div.innerHTML = '';
+  for (const sec of secteurs) {
+    div.innerHTML += '<p style="color:#7c3aed;">🔍 ' + sec + ' — ' + ville + '...</p>';
+    try {
+      const r = await fetch('/api/admin/scraper', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ ville, secteur: sec }) });
+      const d = await r.json();
+      if (d.deja_fait) {
+        div.innerHTML += '<p style="color:#f59e0b;">⚠️ ' + sec + '/' + ville + ' déjà scrapé le ' + d.date + '</p>';
+      } else if (d.success) {
+        div.innerHTML += '<p style="color:#22c55e;">✅ ' + sec + ' : ' + d.nouveaux + ' ajoutés / ' + d.trouves + ' trouvés</p>';
+      } else {
+        div.innerHTML += '<p style="color:#ef4444;">❌ ' + sec + ' : ' + (d.error || 'erreur') + '</p>';
+      }
+    } catch(e) { div.innerHTML += '<p style="color:#ef4444;">❌ ' + sec + ' : erreur réseau</p>'; }
+  }
+  div.innerHTML += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;margin-top:8px;"><strong style="color:#16a34a;">Scraping terminé</strong></div>';
+}
+
+// ===== ADMIN LEADS =====
+async function loadAdminVendeurDropdown() {
+  try {
+    const sheets = await fetch('/api/admin/vendeurs-list', { headers: { 'Authorization': 'Bearer ' + token } });
+    const d = await sheets.json();
+    const sel = document.getElementById('leadVendeur');
+    sel.innerHTML = '<option value="">Vendeur cible...</option>' + (d.vendeurs || []).map(v => '<option value="' + v.email + '">' + (v.prenom || '') + ' ' + v.nom + '</option>').join('');
+  } catch(e) {}
+}
+
+let _adminLeads = [];
+async function searchLeads() {
+  const div = document.getElementById('leadsTable');
+  div.innerHTML = '<p style="color:#9ca3af;">Chargement...</p>';
+  const params = new URLSearchParams();
+  const seg = document.getElementById('leadSeg').value; if (seg) params.set('segment', seg);
+  const an = document.getElementById('leadAnnee').value; if (an) params.set('annee_fin', an);
+  if (document.getElementById('leadNonAttr').checked) params.set('non_attribues', 'true');
+  params.set('per_page', document.getElementById('leadQuota').value || '20');
+  try {
+    const r = await fetch('/api/admin/leads-ohm?' + params, { headers: { 'Authorization': 'Bearer ' + token } });
+    const d = await r.json();
+    _adminLeads = d.prospects || [];
+    if (!_adminLeads.length) { div.innerHTML = '<p style="color:#9ca3af;">Aucun lead</p>'; document.getElementById('leadsAction').style.display = 'none'; return; }
+    div.innerHTML = '<table style="width:100%;border-collapse:collapse;"><thead style="background:#1e1b4b;color:#fff;"><tr><th style="padding:6px 8px;"><input type="checkbox" onchange="toggleLeadCb(this.checked)"></th><th style="padding:6px 8px;text-align:left;">Société</th><th style="padding:6px 8px;">Segment</th><th style="padding:6px 8px;">Fin</th><th style="padding:6px 8px;">Volume</th><th style="padding:6px 8px;">Statut</th></tr></thead><tbody>' +
+      _adminLeads.map((p, i) => '<tr style="border-bottom:1px solid #f3f0ff;"><td style="padding:6px 8px;"><input type="checkbox" class="lead_cb" data-idx="' + i + '" checked></td><td style="padding:6px 8px;font-weight:600;">' + (p.raison_sociale || '—') + '</td><td style="padding:6px 8px;">' + (p.segments || p.typologie_contrat || '—') + '</td><td style="padding:6px 8px;">' + (p.date_fin_livraison || '—') + '</td><td style="padding:6px 8px;">' + (p.volume_total || '—') + '</td><td style="padding:6px 8px;">' + (p.statut || '—') + '</td></tr>').join('') +
+      '</tbody></table>';
+    document.getElementById('leadsAction').style.display = 'block';
+    updAttribBtn();
+  } catch(e) { div.innerHTML = '<p style="color:#ef4444;">Erreur</p>'; }
+}
+
+function toggleLeadCb(c) { document.querySelectorAll('.lead_cb').forEach(x => x.checked = c); updAttribBtn(); }
+function updAttribBtn() {
+  const n = document.querySelectorAll('.lead_cb:checked').length;
+  const v = document.getElementById('leadVendeur').value;
+  document.getElementById('btnAttrib').textContent = '✅ Attribuer ' + n + ' leads' + (v ? ' à ' + v.split('@')[0] : '');
+}
+
+async function attribLeads() {
+  const vendeur = document.getElementById('leadVendeur').value;
+  if (!vendeur) { alert('Sélectionnez un vendeur'); return; }
+  const rows = [...document.querySelectorAll('.lead_cb:checked')].map(c => _adminLeads[parseInt(c.dataset.idx)]._row);
+  if (!rows.length) { alert('Sélectionnez des leads'); return; }
+  if (rows.length > 20) { alert('Max 20 leads par attribution'); return; }
+  const btn = document.getElementById('btnAttrib'); btn.disabled = true; btn.textContent = '⏳...';
+  try {
+    const r = await fetch('/api/admin/attribuer-leads', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ rows, vendeur_email: vendeur }) });
+    const d = await r.json();
+    if (d.success) alert('✅ ' + d.attribues + ' leads attribués à ' + vendeur.split('@')[0]);
+    else alert('❌ ' + d.error);
+  } catch(e) { alert('Erreur réseau'); }
+  btn.disabled = false; updAttribBtn();
 }
 </script>
 </body>
