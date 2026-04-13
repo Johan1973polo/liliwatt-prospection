@@ -133,8 +133,8 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
       <div id="histList"><p style="color:#9ca3af;font-size:13px;">Aucune action enregistrée</p></div>
     </div>
 
-    <!-- ADMIN -->
-    <div class="panel" id="tab-admin">
+    <!-- ADMIN — visible uniquement si role=admin -->
+    <div class="panel" id="tab-admin" style="display:none;">
       <div class="card">
         <h2>📊 Stats BASE BRUTE</h2>
         <div class="kpis" id="adminKpis"></div>
@@ -282,7 +282,7 @@ async function doLogin(){
 }
 function logout(){localStorage.removeItem('p_token');localStorage.removeItem('p_user');token=null;user=null;showLogin();}
 
-function showTab(n){document.querySelectorAll('.tab').forEach((t,i)=>{const tabs=['brute','leads','kpis','admin'];t.classList.toggle('active',tabs[i]===n);});document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('tab-'+n).classList.add('active');if(n==='leads')loadLeads();if(n==='kpis')loadKpis();if(n==='admin')loadAdminStats();}
+function showTab(n){document.querySelectorAll('.tab').forEach((t,i)=>{const tabs=['brute','leads','kpis','admin'];t.classList.toggle('active',tabs[i]===n);});document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('tab-'+n).classList.add('active');if(n==='leads')loadLeads();if(n==='kpis')loadKpis();if(n==='admin'&&isAdmin())loadAdminStats();}
 
 // ===== BASE BRUTE =====
 async function loadBrute(){
@@ -455,6 +455,7 @@ function removeCustomSecteur(s) {
 }
 
 async function loadAdminStats() {
+  if (!isAdmin()) return;
   loadAdminVendeurDropdown();
   loadCustomSecteurs();
   try {
