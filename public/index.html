@@ -178,6 +178,19 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
   </div>
 </div>
 
+<!-- Modal Consulter -->
+<div class="modal" id="mConsult">
+  <div class="modal-box">
+    <button class="close" onclick="closeM('mConsult')">✕</button>
+    <h3 id="mConsultTitle"></h3>
+    <div id="mConsultBody" style="font-size:13px;margin:12px 0;"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn" onclick="prendreFromModal()" id="btnPrendre" style="flex:1;">📌 M'attribuer cette fiche</button>
+      <button class="btn btn-outline" onclick="closeM('mConsult')" style="flex:1;">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let token = localStorage.getItem('p_token');
 let user = JSON.parse(localStorage.getItem('p_user') || 'null');
@@ -240,6 +253,7 @@ async function loadLeads(){
 
 function renderCards(prospects, div, sheet){
   if(!prospects.length){div.innerHTML='<p style="color:#9ca3af;text-align:center;padding:20px;">Aucun prospect</p>';return;}
+  prospects.forEach(p => { _prospectsByRow[p._row] = p; });
   div.innerHTML=prospects.map(p=>{
     const tel=p.telephone||'—';
     const isMine=p._attribue;
@@ -256,7 +270,7 @@ function renderCards(prospects, div, sheet){
       buttons='<button class="btn btn-sm" onclick="openStatut('+p._row+',\''+sheet+'\',\''+esc(p.raison_sociale)+'\',\''+esc(p.statut_appel||'')+'\',\''+esc(p.note_appel||'')+'\')">✏️ Statut</button>' +
         '<button class="btn btn-sm btn-pink" onclick="openMail('+p._row+',\''+sheet+'\',\''+esc(p.raison_sociale)+'\')">📧 Mail RGPD</button>';
     } else if(!attr){
-      buttons='<button class="btn btn-sm btn-outline" onclick="prendre('+p._row+',\''+sheet+'\')">📌 Prendre cette fiche</button>';
+      buttons='<button class="btn btn-sm btn-outline" onclick="openConsult('+p._row+',\''+sheet+'\')">👁 Consulter</button>';
     }
 
     return '<div class="card">' +
@@ -272,9 +286,28 @@ function renderCards(prospects, div, sheet){
 
 function esc(s){return (s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
 
-async function prendre(row, sheet){
-  if(!confirm('Prendre cette fiche ?'))return;
-  await fetch('/api/prospects/prendre/'+row,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({sheet})});
+let _prospectsByRow = {};
+
+function openConsult(row, sheet) {
+  curRow = row; curSheet = sheet;
+  const p = _prospectsByRow[row];
+  if (!p) return;
+  document.getElementById('mConsultTitle').textContent = '🏪 ' + (p.raison_sociale || 'Prospect');
+  const row_fn = (l, v) => v ? '<tr><td style="padding:3px 0;color:#6b7280;font-weight:600;width:110px;">' + l + '</td><td style="color:#1e1b4b;">' + v + '</td></tr>' : '';
+  document.getElementById('mConsultBody').innerHTML =
+    '<table style="width:100%;">' +
+    row_fn('Adresse', (p.adresse||'') + ', ' + (p.ville||'')) +
+    row_fn('Secteur', secteurFR(p.secteur)) +
+    row_fn('Téléphone', p.telephone) +
+    row_fn('Site web', p.site_web ? '<a href="'+p.site_web+'" target="_blank" style="color:#7c3aed;">'+p.site_web+'</a>' : '') +
+    row_fn('Note Google', p.note_google ? '⭐ ' + p.note_google + ' (' + (p.nb_avis||0) + ' avis)' : '') +
+    '</table>';
+  document.getElementById('mConsult').style.display = 'block';
+}
+
+async function prendreFromModal() {
+  await fetch('/api/prospects/prendre/'+curRow,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({sheet:curSheet})});
+  closeM('mConsult');
   loadBrute();
 }
 
