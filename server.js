@@ -56,8 +56,9 @@ app.post('/api/auth/login', async (req, res) => {
         const statut = row[10] || 'actif';
         if (statut === 'bloqué' || statut === 'inactif') return res.status(403).json({ error: 'Compte bloqué' });
         if (row[2] === password) {
-          const isAdm = (row[9]||'').toLowerCase().trim() === 'admin' || email === 'johan.mallet@liliwatt.fr' || email === 'kevin.moreau@liliwatt.fr';
-          const role = isAdm ? 'admin' : (row[9] || 'vendeur');
+          const isAdm = (row[9]||'').toLowerCase().trim() === 'admin' || email.toLowerCase() === 'johan.mallet@liliwatt.fr' || email.toLowerCase() === 'kevin.moreau@liliwatt.fr';
+          const role = isAdm ? 'admin' : 'vendeur';
+          console.log('LOGIN:', email, '| colJ:', row[9], '| isAdmin:', isAdm, '| role:', role);
           const token = jwt.sign({
             email, nom: (row[1] || '') + ' ' + (row[0] || ''), prenom: row[1] || '', nom_famille: row[0] || '',
             role, drive_folder_id: row[5] || '', token_rgpd: row[7] || '',
@@ -442,32 +443,46 @@ app.get('/api/admin/vendeurs-list', verifyToken, isAdminMW, async (req, res) => 
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Leads OHM
+// Leads OHM — pagination + filtres étendus
 app.get('/api/admin/leads-ohm', verifyToken, isAdminMW, async (req, res) => {
   try {
     let rows;
-    try { rows = await getSheetData('LEADS OHM'); } catch(e) { return res.json({ success: true, prospects: [] }); }
-    if (rows.length < 2) return res.json({ success: true, prospects: [] });
+    try { rows = await getSheetData('LEADS OHM'); } catch(e) { return res.json({ success: true, prospects: [], total: 0, pages: 0 }); }
+    if (rows.length < 2) return res.json({ success: true, prospects: [], total: 0, pages: 0 });
     const headers = rows[0];
     const segF = (req.query.segment || '').toUpperCase();
     const anneeF = req.query.annee_fin || '';
+    const statutF = req.query.statut_ohm || '';
+    const volMin = parseFloat(req.query.volume_min || '0');
     const nonAttr = req.query.non_attribues === 'true';
-    const perPage = Math.min(parseInt(req.query.per_page || '20'), 50);
+    const page = parseInt(req.query.page || '1');
+    const perPage = Math.min(parseInt(req.query.per_page || '50'), 50);
 
-    const g = (row, name) => { const i = headers.indexOf(name); return i >= 0 && i < row.length ? row[i] : ''; };
-    const gI = (row, names) => { for (const n of names) { const v = g(row, n); if (v) return v; } return ''; };
+    const g = (row, name) => { const i = headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase())); return i >= 0 && i < row.length ? row[i] : ''; };
 
-    const prospects = [];
-    for (let i = 1; i < rows.length && prospects.length < perPage; i++) {
+    const filtered = [];
+    for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      if (segF) { const s = (gI(row, ['segments', 'typologie_contrat']) || '').toUpperCase(); if (!s.includes(segF)) continue; }
-      if (anneeF && !(g(row, 'date_fin_livraison') || '').includes(anneeF)) continue;
+      if (segF) { const s = (g(row, 'segment') || g(row, 'typologie') || '').toUpperCase(); if (!s.includes(segF)) continue; }
+      if (anneeF && !(g(row, 'date_fin') || '').includes(anneeF)) continue;
+      if (statutF && (g(row, 'statut') || '') !== statutF) continue;
+      if (volMin > 0) { const v = parseFloat((g(row, 'volume') || '0').replace(',', '.')); if (v < volMin) continue; }
       if (nonAttr && (g(row, 'vendeur_attribue') || '').trim()) continue;
-      const obj = { _row: i + 1 };
-      headers.forEach((h, j) => { obj[h] = row[j] || ''; });
-      prospects.push(obj);
+      filtered.push({ _row: i + 1, _data: row });
     }
-    res.json({ success: true, prospects });
+
+    const total = filtered.length;
+    const pages = Math.ceil(total / perPage);
+    const start = (page - 1) * perPage;
+    const slice = filtered.slice(start, start + perPage);
+
+    const prospects = slice.map(f => {
+      const obj = { _row: f._row };
+      headers.forEach((h, j) => { obj[h] = f._data[j] || ''; });
+      return obj;
+    });
+
+    res.json({ success: true, prospects, total, page, pages });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
