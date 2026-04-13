@@ -131,6 +131,8 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
     for (let i = 1; i < rows.length && prospects.length < 100; i++) {
       const row = rows[i];
       const attr = vendeurCol >= 0 ? (row[vendeurCol] || '').trim() : '';
+      // Exclure HORS_POOL (sauf admin avec filtre spécial)
+      if (attr === 'HORS_POOL' && !req.query.hors_pool) continue;
       // Vendeur : ses fiches + fiches non attribuées
       if (!isAdmin && attr && attr.toLowerCase() !== req.user.email.toLowerCase()) continue;
       // Filtres
@@ -196,6 +198,35 @@ app.post('/api/prospects/statut/:row', verifyToken, async (req, res) => {
   try {
     const { statut, note, date_rappel } = req.body;
     const sheet = req.body.sheet || 'BASE BRUTE';
+    const isAdminUser = req.user.role === 'admin' || req.user.email === 'johan.mallet@liliwatt.fr' || req.user.email === 'kevin.moreau@liliwatt.fr';
+    const vendeurCol = await ensureColumn(sheet, 'vendeur_attribue');
+
+    // Lire l'attribution actuelle
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+    const cellRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: MASTER_SHEET_ID, range: `'${sheet}'!${colLetter(vendeurCol)}${req.params.row}`
+    });
+    const currentAttr = ((cellRes.data.values || [[]])[0][0] || '').trim();
+
+    // Vérif : si attribué à un autre vendeur → refuser
+    if (currentAttr && currentAttr !== 'HORS_POOL' && currentAttr.toLowerCase() !== req.user.email.toLowerCase() && !isAdminUser) {
+      return res.status(403).json({ error: 'Fiche attribuée à un autre vendeur' });
+    }
+
+    // Auto-attribution si fiche libre
+    if (!currentAttr || currentAttr === '') {
+      await updateCell(sheet, req.params.row, vendeurCol, req.user.email);
+    }
+
+    // Règles métier par statut
+    if (statut === 'Pas intéressé') {
+      // Libérer la fiche
+      await updateCell(sheet, req.params.row, vendeurCol, '');
+    } else if (statut === 'Faux numéro') {
+      // Sortir du pool
+      await updateCell(sheet, req.params.row, vendeurCol, 'HORS_POOL');
+    }
+
     if (statut) {
       const col = await ensureColumn(sheet, 'statut_appel');
       await updateCell(sheet, req.params.row, col, statut);
@@ -307,6 +338,32 @@ app.get('/api/kpis', verifyToken, async (req, res) => {
 
     historique.sort((a, b) => b.date.localeCompare(a.date));
     res.json({ success: true, kpis: { total, appels, interesses, rappels, rgpd }, historique: historique.slice(0, 10) });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== ADMIN STATS =====
+app.get('/api/admin/stats', verifyToken, async (req, res) => {
+  try {
+    const rows = await getSheetData('BASE BRUTE');
+    if (rows.length < 2) return res.json({ success: true, stats: { total: 0, libres: 0, traitees: 0, hors_pool: 0, par_vendeur: [] } });
+    const headers = rows[0];
+    const vendeurCol = headers.findIndex(h => h.toLowerCase().includes('vendeur_attribue'));
+    const statutCol = headers.findIndex(h => h.toLowerCase().includes('statut_appel'));
+    let total = 0, libres = 0, traitees = 0, hors_pool = 0;
+    const vendeurs = {};
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      total++;
+      const attr = vendeurCol >= 0 ? (row[vendeurCol] || '').trim() : '';
+      const st = statutCol >= 0 ? (row[statutCol] || '').trim() : '';
+      if (attr === 'HORS_POOL') { hors_pool++; continue; }
+      if (!attr) { libres++; continue; }
+      if (st && st !== 'À appeler') traitees++;
+      if (!vendeurs[attr]) vendeurs[attr] = { email: attr, nb_fiches: 0, nb_traitees: 0 };
+      vendeurs[attr].nb_fiches++;
+      if (st && st !== 'À appeler') vendeurs[attr].nb_traitees++;
+    }
+    res.json({ success: true, stats: { total, libres, traitees, hors_pool, par_vendeur: Object.values(vendeurs) } });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

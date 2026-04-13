@@ -85,6 +85,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
     <div class="tab active" onclick="showTab('brute')">📋 Base brute</div>
     <div class="tab" onclick="showTab('leads')">⭐ Leads</div>
     <div class="tab" onclick="showTab('kpis')">📊 Mes KPIs</div>
+    <div class="tab" id="tabAdmin" style="display:none;" onclick="showTab('admin')">⚙️ Admin</div>
   </div>
   <div class="container">
 
@@ -96,11 +97,12 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         <select id="fStatut">
           <option value="">Tous statuts</option>
           <option value="non_traite">Non traité</option>
-          <option value="À appeler">À appeler</option>
-          <option value="Intéressé">✅ Intéressé</option>
+          <option value="À appeler">📞 À appeler</option>
+          <option value="Appelé">☎️ Appelé</option>
+          <option value="Intéressé">🔥 Intéressé</option>
+          <option value="Attente de documents">📄 Attente docs</option>
+          <option value="Dossier reçu">✅ Dossier reçu</option>
           <option value="À rappeler">🔄 À rappeler</option>
-          <option value="Pas intéressé">❌ Pas intéressé</option>
-          <option value="Faux numéro">📵 Faux n°</option>
           <option value="Ne répond pas">📭 Pas de rép.</option>
         </select>
         <input type="text" id="fSearch" placeholder="🔍 Rechercher...">
@@ -130,6 +132,16 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
       <h4 style="color:#1e1b4b;margin-bottom:10px;">Historique récent</h4>
       <div id="histList"><p style="color:#9ca3af;font-size:13px;">Aucune action enregistrée</p></div>
     </div>
+
+    <!-- ADMIN -->
+    <div class="panel" id="tab-admin">
+      <div class="card">
+        <h2>📊 Stats BASE BRUTE</h2>
+        <div class="kpis" id="adminKpis"></div>
+        <h4 style="color:#1e1b4b;margin:16px 0 8px;">Par vendeur</h4>
+        <div id="adminVendeurs" style="font-size:12px;"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -140,12 +152,14 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
     <h3 id="mStatutTitle">✏️ Mettre à jour le statut</h3>
     <label>Statut</label>
     <select id="mSt">
-      <option value="À appeler">À appeler</option>
-      <option value="Appelé">Appelé</option>
-      <option value="Intéressé">✅ Intéressé</option>
+      <option value="À appeler">📞 À appeler</option>
+      <option value="Appelé">☎️ Appelé</option>
+      <option value="Intéressé">🔥 Intéressé</option>
+      <option value="Attente de documents">📄 Attente de documents</option>
+      <option value="Dossier reçu">✅ Dossier reçu</option>
       <option value="À rappeler">🔄 À rappeler</option>
-      <option value="Pas intéressé">❌ Pas intéressé</option>
-      <option value="Faux numéro">📵 Faux numéro</option>
+      <option value="Pas intéressé">❌ Pas intéressé (libère la fiche)</option>
+      <option value="Faux numéro">📵 Faux numéro (sort du pool)</option>
       <option value="Ne répond pas">📭 Ne répond pas</option>
     </select>
     <div id="mRappelWrap" class="hidden">
@@ -212,7 +226,7 @@ function isAdmin(){return user && (user.role==='admin'||user.email==='johan.mall
 if (token && user) showApp(); else showLogin();
 
 function showLogin(){document.getElementById('loginPage').classList.remove('hidden');document.getElementById('appPage').classList.add('hidden');}
-function showApp(){document.getElementById('loginPage').classList.add('hidden');document.getElementById('appPage').classList.remove('hidden');document.getElementById('uName').textContent=user.prenom||user.nom;document.getElementById('uRole').textContent=user.role==='admin'?'Admin':'Vendeur';loadBrute();loadKpis();}
+function showApp(){document.getElementById('loginPage').classList.add('hidden');document.getElementById('appPage').classList.remove('hidden');document.getElementById('uName').textContent=user.prenom||user.nom;document.getElementById('uRole').textContent=isAdmin()?'Admin':'Vendeur';if(isAdmin())document.getElementById('tabAdmin').style.display='block';loadBrute();loadKpis();}
 
 async function doLogin(){
   const e=document.getElementById('lEmail').value,p=document.getElementById('lPwd').value,err=document.getElementById('lErr');
@@ -222,7 +236,7 @@ async function doLogin(){
 }
 function logout(){localStorage.removeItem('p_token');localStorage.removeItem('p_user');token=null;user=null;showLogin();}
 
-function showTab(n){document.querySelectorAll('.tab').forEach((t,i)=>{const tabs=['brute','leads','kpis'];t.classList.toggle('active',tabs[i]===n);});document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('tab-'+n).classList.add('active');if(n==='leads')loadLeads();if(n==='kpis')loadKpis();}
+function showTab(n){document.querySelectorAll('.tab').forEach((t,i)=>{const tabs=['brute','leads','kpis','admin'];t.classList.toggle('active',tabs[i]===n);});document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('tab-'+n).classList.add('active');if(n==='leads')loadLeads();if(n==='kpis')loadKpis();if(n==='admin')loadAdminStats();}
 
 // ===== BASE BRUTE =====
 async function loadBrute(){
@@ -260,7 +274,7 @@ function renderCards(prospects, div, sheet){
     const attr=(p.vendeur_attribue||'').trim();
     const attrByOther=attr&&!isMine&&!isAdmin();
     if(attrByOther) return ''; // masquer fiches prises par d'autres (vendeur)
-    const stColors={'Intéressé':'#22c55e','À rappeler':'#f59e0b','Pas intéressé':'#ef4444','Faux numéro':'#6b7280','Ne répond pas':'#3b82f6','À appeler':'#9ca3af','Appelé':'#7c3aed'};
+    const stColors={'Intéressé':'#22c55e','Attente de documents':'#f59e0b','Dossier reçu':'#22c55e','À rappeler':'#f59e0b','Pas intéressé':'#ef4444','Faux numéro':'#ef4444','Ne répond pas':'#3b82f6','À appeler':'#9ca3af','Appelé':'#7c3aed'};
     const sc=stColors[p.statut_appel]||'#9ca3af';
     const stBadge=p.statut_appel?'<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:'+sc+'18;color:'+sc+';font-weight:600;">'+p.statut_appel+'</span>':'';
     const attrBadge=isAdmin()&&attr&&!isMine?'<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#fef3c7;color:#92400e;font-weight:600;">'+attr.split('@')[0]+'</span>':'';
@@ -370,6 +384,33 @@ async function loadKpis(){
       hist.innerHTML=d.historique.map(h=>'<div class="hist-item"><span class="date">'+h.date+'</span> — <span class="nom">'+h.nom+'</span> — '+h.statut+'</div>').join('');
     }else{hist.innerHTML='<p style="color:#9ca3af;font-size:13px;">Aucune action</p>';}
   }catch(e){}
+}
+
+// ===== ADMIN STATS =====
+async function loadAdminStats() {
+  try {
+    const r = await fetch('/api/admin/stats', { headers: { 'Authorization': 'Bearer ' + token } });
+    const d = await r.json();
+    if (!d.success) return;
+    const s = d.stats;
+    document.getElementById('adminKpis').innerHTML =
+      '<div class="kpi"><div class="v">' + s.total + '</div><div class="l">Total fiches</div></div>' +
+      '<div class="kpi"><div class="v" style="color:#22c55e;">' + s.traitees + '</div><div class="l">Traitées</div></div>' +
+      '<div class="kpi"><div class="v" style="color:#3b82f6;">' + s.libres + '</div><div class="l">Libres</div></div>' +
+      '<div class="kpi"><div class="v" style="color:#ef4444;">' + s.hors_pool + '</div><div class="l">Hors pool</div></div>';
+    if (s.par_vendeur.length) {
+      document.getElementById('adminVendeurs').innerHTML = s.par_vendeur.map(v => {
+        const pct = v.nb_fiches ? Math.round(v.nb_traitees / v.nb_fiches * 100) : 0;
+        return '<div style="padding:8px 0;border-bottom:1px solid #f3f0ff;display:flex;align-items:center;gap:10px;">' +
+          '<span style="font-weight:600;color:#1e1b4b;min-width:140px;">' + v.email.split('@')[0] + '</span>' +
+          '<span style="font-size:11px;color:#6b7280;">' + v.nb_traitees + '/' + v.nb_fiches + '</span>' +
+          '<div style="flex:1;height:6px;background:#ede9fe;border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:#7c3aed;border-radius:3px;"></div></div>' +
+          '<span style="font-size:11px;font-weight:600;color:#7c3aed;">' + pct + '%</span></div>';
+      }).join('');
+    } else {
+      document.getElementById('adminVendeurs').innerHTML = '<p style="color:#9ca3af;">Aucun vendeur actif</p>';
+    }
+  } catch(e) {}
 }
 </script>
 </body>
