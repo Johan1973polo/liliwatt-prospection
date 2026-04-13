@@ -56,14 +56,16 @@ app.post('/api/auth/login', async (req, res) => {
         const statut = row[10] || 'actif';
         if (statut === 'bloqué' || statut === 'inactif') return res.status(403).json({ error: 'Compte bloqué' });
         if (row[2] === password) {
+          const isAdm = (row[9]||'').toLowerCase().trim() === 'admin' || email === 'johan.mallet@liliwatt.fr' || email === 'kevin.moreau@liliwatt.fr';
+          const role = isAdm ? 'admin' : (row[9] || 'vendeur');
           const token = jwt.sign({
             email, nom: (row[1] || '') + ' ' + (row[0] || ''), prenom: row[1] || '', nom_famille: row[0] || '',
-            role: row[9] || 'vendeur', drive_folder_id: row[5] || '', token_rgpd: row[7] || '',
+            role, drive_folder_id: row[5] || '', token_rgpd: row[7] || '',
             mdp: row[2] || ''
           }, JWT_SECRET, { expiresIn: '24h' });
           return res.json({ success: true, token, user: {
             email, nom: (row[1] || '') + ' ' + (row[0] || ''), prenom: row[1] || '',
-            role: row[9] || 'vendeur', token_rgpd: row[7] || ''
+            role, token_rgpd: row[7] || ''
           }});
         }
         return res.status(401).json({ error: 'Mot de passe incorrect' });
@@ -225,6 +227,11 @@ app.post('/api/prospects/statut/:row', verifyToken, async (req, res) => {
     } else if (statut === 'Faux numéro') {
       // Sortir du pool
       await updateCell(sheet, req.params.row, vendeurCol, 'HORS_POOL');
+    } else if (statut === 'Client signé') {
+      // Reste définitivement au vendeur — ne repart jamais
+      if (!currentAttr || currentAttr === '') {
+        await updateCell(sheet, req.params.row, vendeurCol, req.user.email);
+      }
     }
 
     if (statut) {
@@ -281,6 +288,7 @@ app.post('/api/prospects/mail/:row', verifyToken, async (req, res) => {
 </div></div>`;
 
     // Envoyer via Zoho SMTP
+    console.log(`📧 SMTP user: ${req.user.email} | pass length: ${(req.user.mdp||'').length} | to: ${email_destinataire}`);
     const transporter = nodemailer.createTransport({
       host: 'smtp.zoho.eu', port: 465, secure: true,
       auth: { user: req.user.email, pass: req.user.mdp }
@@ -349,7 +357,7 @@ app.get('/api/admin/stats', verifyToken, async (req, res) => {
     const headers = rows[0];
     const vendeurCol = headers.findIndex(h => h.toLowerCase().includes('vendeur_attribue'));
     const statutCol = headers.findIndex(h => h.toLowerCase().includes('statut_appel'));
-    let total = 0, libres = 0, traitees = 0, hors_pool = 0;
+    let total = 0, libres = 0, traitees = 0, hors_pool = 0, signes = 0;
     const vendeurs = {};
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
@@ -359,11 +367,23 @@ app.get('/api/admin/stats', verifyToken, async (req, res) => {
       if (attr === 'HORS_POOL') { hors_pool++; continue; }
       if (!attr) { libres++; continue; }
       if (st && st !== 'À appeler') traitees++;
-      if (!vendeurs[attr]) vendeurs[attr] = { email: attr, nb_fiches: 0, nb_traitees: 0 };
+      if (st === 'Client signé') signes++;
+      if (!vendeurs[attr]) vendeurs[attr] = { email: attr, nb_fiches: 0, nb_traitees: 0, nb_signes: 0 };
       vendeurs[attr].nb_fiches++;
       if (st && st !== 'À appeler') vendeurs[attr].nb_traitees++;
+      if (st === 'Client signé') vendeurs[attr].nb_signes++;
     }
-    res.json({ success: true, stats: { total, libres, traitees, hors_pool, par_vendeur: Object.values(vendeurs) } });
+    // Enrichir noms vendeurs depuis Sheets MDP
+    try {
+      const mdpSheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+      const mdpR = await mdpSheets.spreadsheets.values.get({ spreadsheetId: SHEETS_MDP_ID, range: 'A:D' });
+      const mdpRows = mdpR.data.values || [];
+      for (const v of Object.values(vendeurs)) {
+        const mdp = mdpRows.find(r => (r[3]||'').toLowerCase() === v.email.toLowerCase());
+        if (mdp) v.nom = (mdp[1]||'') + ' ' + (mdp[0]||'');
+      }
+    } catch(e) {}
+    res.json({ success: true, stats: { total, libres, traitees, hors_pool, signes, par_vendeur: Object.values(vendeurs) } });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -390,8 +410,8 @@ app.post('/api/admin/scraper', verifyToken, isAdminMW, async (req, res) => {
     }
 
     const { execSync } = require('child_process');
-    const script = '/Users/strategyglobal/Desktop/scraper_google_places.py';
-    const output = execSync(`python3 "${script}" ${secteur} "${ville}"`, { timeout: 120000, cwd: '/Users/strategyglobal/Desktop' }).toString();
+    const script = path.join(__dirname, 'scraper.py');
+    const output = execSync(`python3 "${script}" ${secteur} "${ville}"`, { timeout: 120000, env: { ...process.env, PATH: process.env.PATH } }).toString();
 
     let trouves = 0, nouveaux = 0;
     for (const line of output.split('\n')) {

@@ -198,6 +198,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
       <option value="Pas intéressé">❌ Pas intéressé (libère la fiche)</option>
       <option value="Faux numéro">📵 Faux numéro (sort du pool)</option>
       <option value="Ne répond pas">📭 Ne répond pas</option>
+      <option value="Client signé">🏆 Client signé</option>
     </select>
     <div id="mRappelWrap" class="hidden">
       <label>Date de rappel</label>
@@ -311,7 +312,7 @@ function renderCards(prospects, div, sheet){
     const attr=(p.vendeur_attribue||'').trim();
     const attrByOther=attr&&!isMine&&!isAdmin();
     if(attrByOther) return ''; // masquer fiches prises par d'autres (vendeur)
-    const stColors={'Intéressé':'#22c55e','Attente de documents':'#f59e0b','Dossier reçu':'#22c55e','À rappeler':'#f59e0b','Pas intéressé':'#ef4444','Faux numéro':'#ef4444','Ne répond pas':'#3b82f6','À appeler':'#9ca3af','Appelé':'#7c3aed'};
+    const stColors={'Intéressé':'#22c55e','Attente de documents':'#f59e0b','Dossier reçu':'#22c55e','À rappeler':'#f59e0b','Pas intéressé':'#ef4444','Faux numéro':'#ef4444','Ne répond pas':'#3b82f6','À appeler':'#9ca3af','Appelé':'#7c3aed','Client signé':'#16a34a'};
     const sc=stColors[p.statut_appel]||'#9ca3af';
     const stBadge=p.statut_appel?'<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:'+sc+'18;color:'+sc+';font-weight:600;">'+p.statut_appel+'</span>':'';
     const attrBadge=isAdmin()&&attr&&!isMine?'<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#fef3c7;color:#92400e;font-weight:600;">'+attr.split('@')[0]+'</span>':'';
@@ -431,19 +432,24 @@ async function loadAdminStats() {
     const d = await r.json();
     if (!d.success) return;
     const s = d.stats;
+    const pct = s.total ? Math.round(s.traitees/s.total*100) : 0;
     document.getElementById('adminKpis').innerHTML =
       '<div class="kpi"><div class="v">' + s.total + '</div><div class="l">Total fiches</div></div>' +
-      '<div class="kpi"><div class="v" style="color:#22c55e;">' + s.traitees + '</div><div class="l">Traitées</div></div>' +
+      '<div class="kpi"><div class="v" style="color:#22c55e;">' + s.traitees + ' <span style="font-size:12px;">(' + pct + '%)</span></div><div class="l">Traitées</div></div>' +
       '<div class="kpi"><div class="v" style="color:#3b82f6;">' + s.libres + '</div><div class="l">Libres</div></div>' +
-      '<div class="kpi"><div class="v" style="color:#ef4444;">' + s.hors_pool + '</div><div class="l">Hors pool</div></div>';
+      '<div class="kpi"><div class="v" style="color:#ef4444;">' + s.hors_pool + '</div><div class="l">Hors pool</div></div>' +
+      '<div class="kpi"><div class="v" style="color:#16a34a;">' + (s.signes||0) + '</div><div class="l">🏆 Signés</div></div>';
     if (s.par_vendeur.length) {
       document.getElementById('adminVendeurs').innerHTML = s.par_vendeur.map(v => {
-        const pct = v.nb_fiches ? Math.round(v.nb_traitees / v.nb_fiches * 100) : 0;
+        const vpct = v.nb_fiches ? Math.round(v.nb_traitees / v.nb_fiches * 100) : 0;
+        const nom = v.nom || v.email.split('@')[0];
         return '<div style="padding:8px 0;border-bottom:1px solid #f3f0ff;display:flex;align-items:center;gap:10px;">' +
-          '<span style="font-weight:600;color:#1e1b4b;min-width:140px;">' + v.email.split('@')[0] + '</span>' +
+          '<span style="font-weight:600;color:#1e1b4b;min-width:140px;">' + nom + '</span>' +
           '<span style="font-size:11px;color:#6b7280;">' + v.nb_traitees + '/' + v.nb_fiches + '</span>' +
-          '<div style="flex:1;height:6px;background:#ede9fe;border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:#7c3aed;border-radius:3px;"></div></div>' +
-          '<span style="font-size:11px;font-weight:600;color:#7c3aed;">' + pct + '%</span></div>';
+          '<div style="flex:1;height:6px;background:#ede9fe;border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + vpct + '%;background:#7c3aed;border-radius:3px;"></div></div>' +
+          '<span style="font-size:11px;font-weight:600;color:#7c3aed;">' + vpct + '%</span>' +
+          (v.nb_signes ? '<span style="font-size:11px;color:#16a34a;font-weight:600;">🏆 ' + v.nb_signes + '</span>' : '') +
+          '</div>';
       }).join('');
     } else {
       document.getElementById('adminVendeurs').innerHTML = '<p style="color:#9ca3af;">Aucun vendeur actif</p>';
