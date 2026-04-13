@@ -2,6 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { google } = require('googleapis');
 const axios = require('axios');
+const nodemailer = require('nodemailer');
 const path = require('path');
 require('dotenv').config();
 
@@ -9,7 +10,7 @@ const app = express();
 const port = process.env.PORT || 3002;
 const JWT_SECRET = process.env.JWT_SECRET || 'liliwatt-prospection-secret-2026';
 const SHEETS_MDP_ID = process.env.SHEETS_MDP_ID || '11gVGMBtqMUhPh70yjMgjW-yLDht6fO0KqWJAF53ASXk';
-const MASTER_SHEET_ID = process.env.MASTER_SHEET_ID || '';
+const MASTER_SHEET_ID = process.env.MASTER_SHEET_ID || '1JFEAXFZbdvf40yDWZGVnuEgUN15XdOAx6WgqL69-AMA';
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -19,12 +20,20 @@ let DRIVE_CREDENTIALS;
 try {
   if (process.env.GOOGLE_DRIVE_CREDS_BASE64) {
     DRIVE_CREDENTIALS = JSON.parse(Buffer.from(process.env.GOOGLE_DRIVE_CREDS_BASE64, 'base64').toString());
+  } else {
+    DRIVE_CREDENTIALS = require('/Users/strategyglobal/Desktop/courtier-energie/liliwatt-drive-credentials.json');
   }
 } catch(e) { console.warn('Drive credentials non disponibles'); }
 
 function getSheetsClient(scopes) {
   const auth = new google.auth.GoogleAuth({ credentials: DRIVE_CREDENTIALS, scopes: scopes || ['https://www.googleapis.com/auth/spreadsheets'] });
   return google.sheets({ version: 'v4', auth });
+}
+
+function colLetter(idx) {
+  let s = '';
+  while (idx >= 0) { s = String.fromCharCode(65 + (idx % 26)) + s; idx = Math.floor(idx / 26) - 1; }
+  return s;
 }
 
 // ===== AUTH =====
@@ -35,7 +44,7 @@ const verifyToken = (req, res, next) => {
   catch(e) { return res.status(401).json({ error: 'Token invalide' }); }
 };
 
-// Login — vérifie dans Sheets MDP ZOHO
+// Login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -45,12 +54,17 @@ app.post('/api/auth/login', async (req, res) => {
     for (const row of rows) {
       if ((row[3] || '').toLowerCase() === email.toLowerCase()) {
         const statut = row[10] || 'actif';
-        if (statut === 'bloqué' || statut === 'inactif') {
-          return res.status(403).json({ error: 'Compte bloqué' });
-        }
+        if (statut === 'bloqué' || statut === 'inactif') return res.status(403).json({ error: 'Compte bloqué' });
         if (row[2] === password) {
-          const token = jwt.sign({ email, nom: (row[1] || '') + ' ' + (row[0] || ''), role: row[9] || 'vendeur' }, JWT_SECRET, { expiresIn: '24h' });
-          return res.json({ success: true, token, user: { email, nom: (row[1] || '') + ' ' + (row[0] || ''), role: row[9] || 'vendeur' } });
+          const token = jwt.sign({
+            email, nom: (row[1] || '') + ' ' + (row[0] || ''), prenom: row[1] || '', nom_famille: row[0] || '',
+            role: row[9] || 'vendeur', drive_folder_id: row[5] || '', token_rgpd: row[7] || '',
+            mdp: row[2] || ''
+          }, JWT_SECRET, { expiresIn: '24h' });
+          return res.json({ success: true, token, user: {
+            email, nom: (row[1] || '') + ' ' + (row[0] || ''), prenom: row[1] || '',
+            role: row[9] || 'vendeur', token_rgpd: row[7] || ''
+          }});
         }
         return res.status(401).json({ error: 'Mot de passe incorrect' });
       }
@@ -59,168 +73,242 @@ app.post('/api/auth/login', async (req, res) => {
   } catch(e) { console.error('Login error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
-// ===== PROSPECTS =====
-// GET /api/mes-prospects — optimisé pour gros sheets
-app.get('/api/mes-prospects', verifyToken, async (req, res) => {
+// ===== HELPERS SHEETS =====
+async function getSheetData(sheetName) {
+  const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+  const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: `'${sheetName}'!A:Z` });
+  return r.data.values || [];
+}
+
+async function findColIndex(sheetName, colName) {
+  const rows = await getSheetData(sheetName);
+  if (!rows.length) return -1;
+  return rows[0].findIndex(h => h.toLowerCase().trim() === colName.toLowerCase().trim());
+}
+
+async function updateCell(sheetName, row, col, value) {
+  const sheets = getSheetsClient();
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: MASTER_SHEET_ID,
+    range: `'${sheetName}'!${colLetter(col)}${row}`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[value]] }
+  });
+}
+
+async function ensureColumn(sheetName, colName) {
+  const sheets = getSheetsClient();
+  const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: `'${sheetName}'!1:1` });
+  const headers = (r.data.values || [[]])[0];
+  let idx = headers.findIndex(h => h.toLowerCase().trim() === colName.toLowerCase().trim());
+  if (idx < 0) {
+    idx = headers.length;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: MASTER_SHEET_ID, range: `'${sheetName}'!${colLetter(idx)}1`,
+      valueInputOption: 'RAW', requestBody: { values: [[colName]] }
+    });
+  }
+  return idx;
+}
+
+// ===== GET /api/prospects/brute =====
+app.get('/api/prospects/brute', verifyToken, async (req, res) => {
   try {
-    if (!MASTER_SHEET_ID) return res.status(503).json({ error: 'MASTER_SHEET_ID non configuré' });
-    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
-
-    const isAdmin = req.user.role === 'admin' ||
-      req.user.email === 'johan.mallet@liliwatt.fr' ||
-      req.user.email === 'kevin.moreau@liliwatt.fr';
-
-    // 1. En-têtes
-    const headersRes = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: 'A1:BZ1' });
-    const headers = headersRes.data.values[0] || [];
+    const rows = await getSheetData('BASE BRUTE');
+    if (rows.length < 2) return res.json({ success: true, prospects: [] });
+    const headers = rows[0];
     const vendeurCol = headers.findIndex(h => h.toLowerCase().includes('vendeur_attribue'));
+    const statutCol = headers.findIndex(h => h.toLowerCase().includes('statut_appel'));
+    const secteurCol = headers.findIndex(h => h.toLowerCase().includes('secteur'));
+    const villeCol = headers.findIndex(h => h.toLowerCase().includes('ville'));
+    const isAdmin = req.user.role === 'admin';
+    const fSecteur = (req.query.secteur || '').toLowerCase();
+    const fVille = (req.query.ville || '').toLowerCase();
+    const fStatut = (req.query.statut || '').toLowerCase();
+    const fSearch = (req.query.search || '').toLowerCase();
 
-    if (isAdmin) {
-      // Admin : 200 premières lignes
-      const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: 'A2:BZ201' });
-      const rows = r.data.values || [];
-      const prospects = rows.map((row, i) => {
-        const obj = { _row: i + 2 };
-        headers.forEach((h, j) => { obj[h] = row[j] || ''; });
-        return obj;
-      });
-      return res.json({ success: true, prospects, total: prospects.length });
-    }
-
-    // Vendeur : lire uniquement la colonne vendeur_attribue
-    if (vendeurCol < 0) return res.json({ success: true, prospects: [], total: 0 });
-
-    const colName = colLetter(vendeurCol);
-    const vendeurColRes = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: `${colName}2:${colName}40000` });
-    const vendeurValues = vendeurColRes.data.values || [];
-
-    const rowNumbers = [];
-    vendeurValues.forEach((cell, i) => {
-      if ((cell[0] || '').toLowerCase().trim() === req.user.email.toLowerCase().trim()) {
-        rowNumbers.push(i + 2);
+    const prospects = [];
+    for (let i = 1; i < rows.length && prospects.length < 100; i++) {
+      const row = rows[i];
+      const attr = vendeurCol >= 0 ? (row[vendeurCol] || '').trim() : '';
+      // Vendeur : ses fiches + fiches non attribuées
+      if (!isAdmin && attr && attr.toLowerCase() !== req.user.email.toLowerCase()) continue;
+      // Filtres
+      if (fSecteur && secteurCol >= 0 && !(row[secteurCol] || '').toLowerCase().includes(fSecteur)) continue;
+      if (fVille && villeCol >= 0 && !(row[villeCol] || '').toLowerCase().includes(fVille)) continue;
+      if (fStatut) {
+        const st = statutCol >= 0 ? (row[statutCol] || '') : '';
+        if (fStatut === 'non_traite' && st) continue;
+        else if (fStatut !== 'non_traite' && st.toLowerCase() !== fStatut) continue;
       }
-    });
-
-    if (rowNumbers.length === 0) return res.json({ success: true, prospects: [], total: 0 });
-
-    // Lire seulement les lignes attribuées (max 50)
-    const targetRows = rowNumbers.slice(0, 50);
-    const ranges = targetRows.map(n => `A${n}:BZ${n}`);
-    const batchRes = await sheets.spreadsheets.values.batchGet({ spreadsheetId: MASTER_SHEET_ID, ranges });
-
-    const prospects = (batchRes.data.valueRanges || []).map((vr, i) => {
-      const row = (vr.values || [[]])[0] || [];
-      const obj = { _row: targetRows[i] };
+      if (fSearch) {
+        const hay = row.join(' ').toLowerCase();
+        if (!hay.includes(fSearch)) continue;
+      }
+      const obj = { _row: i + 1 };
       headers.forEach((h, j) => { obj[h] = row[j] || ''; });
-      return obj;
-    });
-
-    res.json({ success: true, prospects, total: rowNumbers.length });
-  } catch(e) { console.error('Prospects error:', e.message); res.status(500).json({ error: e.message }); }
-});
-
-// POST /api/prospect/:row/statut
-app.post('/api/prospect/:row/statut', verifyToken, async (req, res) => {
-  try {
-    const { statut } = req.body;
-    const sheets = getSheetsClient();
-    // Écrire dans une colonne dédiée (ex: colonne AV = statut appel)
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: 'A1:AZ1' });
-    const headers = r.data.values[0] || [];
-    let col = headers.indexOf('statut_appel');
-    if (col < 0) {
-      col = headers.length;
-      await sheets.spreadsheets.values.update({ spreadsheetId: MASTER_SHEET_ID, range: colLetter(col) + '1', valueInputOption: 'RAW', requestBody: { values: [['statut_appel']] } });
+      obj._attribue = attr.toLowerCase() === req.user.email.toLowerCase();
+      prospects.push(obj);
     }
-    await sheets.spreadsheets.values.update({ spreadsheetId: MASTER_SHEET_ID, range: colLetter(col) + req.params.row, valueInputOption: 'RAW', requestBody: { values: [[statut]] } });
-    console.log(`📞 Statut ${req.params.row}: ${statut} par ${req.user.email}`);
+    // Secteurs et villes uniques pour les dropdowns
+    const secteurs = [...new Set(rows.slice(1).map(r => secteurCol >= 0 ? r[secteurCol] || '' : '').filter(Boolean))];
+    const villes = [...new Set(rows.slice(1).map(r => villeCol >= 0 ? r[villeCol] || '' : '').filter(Boolean))];
+    res.json({ success: true, prospects, secteurs, villes });
+  } catch(e) { console.error('Brute error:', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ===== GET /api/prospects/leads =====
+app.get('/api/prospects/leads', verifyToken, async (req, res) => {
+  try {
+    let rows;
+    try { rows = await getSheetData('LEADS OHM'); } catch(e) { return res.json({ success: true, prospects: [] }); }
+    if (rows.length < 2) return res.json({ success: true, prospects: [] });
+    const headers = rows[0];
+    const vendeurCol = headers.findIndex(h => h.toLowerCase().includes('vendeur_attribue'));
+    const prospects = [];
+    for (let i = 1; i < rows.length; i++) {
+      const attr = vendeurCol >= 0 ? (row = rows[i], (row[vendeurCol] || '').trim()) : '';
+      if (attr.toLowerCase() !== req.user.email.toLowerCase()) continue;
+      const row = rows[i];
+      const obj = { _row: i + 1, _sheet: 'LEADS OHM', _attribue: true };
+      headers.forEach((h, j) => { obj[h] = row[j] || ''; });
+      prospects.push(obj);
+    }
+    res.json({ success: true, prospects });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== POST /api/prospects/prendre/:row =====
+app.post('/api/prospects/prendre/:row', verifyToken, async (req, res) => {
+  try {
+    const sheet = req.body.sheet || 'BASE BRUTE';
+    const vendeurCol = await ensureColumn(sheet, 'vendeur_attribue');
+    const statutCol = await ensureColumn(sheet, 'statut_appel');
+    await updateCell(sheet, req.params.row, vendeurCol, req.user.email);
+    await updateCell(sheet, req.params.row, statutCol, 'À appeler');
+    console.log(`📌 Fiche ${req.params.row} prise par ${req.user.email}`);
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/prospect/:row/note
-app.post('/api/prospect/:row/note', verifyToken, async (req, res) => {
+// ===== POST /api/prospects/statut/:row =====
+app.post('/api/prospects/statut/:row', verifyToken, async (req, res) => {
   try {
-    const { note } = req.body;
-    const sheets = getSheetsClient();
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: 'A1:AZ1' });
-    const headers = r.data.values[0] || [];
-    let col = headers.indexOf('note_appel');
-    if (col < 0) { col = headers.length; await sheets.spreadsheets.values.update({ spreadsheetId: MASTER_SHEET_ID, range: colLetter(col) + '1', valueInputOption: 'RAW', requestBody: { values: [['note_appel']] } }); }
-    await sheets.spreadsheets.values.update({ spreadsheetId: MASTER_SHEET_ID, range: colLetter(col) + req.params.row, valueInputOption: 'RAW', requestBody: { values: [[note]] } });
+    const { statut, note, date_rappel } = req.body;
+    const sheet = req.body.sheet || 'BASE BRUTE';
+    if (statut) {
+      const col = await ensureColumn(sheet, 'statut_appel');
+      await updateCell(sheet, req.params.row, col, statut);
+    }
+    if (note !== undefined) {
+      const col = await ensureColumn(sheet, 'note_appel');
+      await updateCell(sheet, req.params.row, col, note);
+    }
+    if (date_rappel) {
+      const col = await ensureColumn(sheet, 'date_rappel');
+      await updateCell(sheet, req.params.row, col, date_rappel);
+    }
+    // Historique
+    const histCol = await ensureColumn(sheet, 'date_dernier_appel');
+    await updateCell(sheet, req.params.row, histCol, new Date().toLocaleString('fr-FR'));
+    console.log(`📞 Fiche ${req.params.row}: ${statut} par ${req.user.email}`);
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/prospect/:row/rappel
-app.post('/api/prospect/:row/rappel', verifyToken, async (req, res) => {
+// ===== POST /api/prospects/mail/:row =====
+app.post('/api/prospects/mail/:row', verifyToken, async (req, res) => {
   try {
-    const { date_rappel } = req.body;
-    const sheets = getSheetsClient();
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: 'A1:AZ1' });
-    const headers = r.data.values[0] || [];
-    let col = headers.indexOf('date_rappel');
-    if (col < 0) { col = headers.length; await sheets.spreadsheets.values.update({ spreadsheetId: MASTER_SHEET_ID, range: colLetter(col) + '1', valueInputOption: 'RAW', requestBody: { values: [['date_rappel']] } }); }
-    await sheets.spreadsheets.values.update({ spreadsheetId: MASTER_SHEET_ID, range: colLetter(col) + req.params.row, valueInputOption: 'RAW', requestBody: { values: [[date_rappel]] } });
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    const { email_destinataire, nom_gerant } = req.body;
+    if (!email_destinataire) return res.status(400).json({ error: 'Email requis' });
+    const rgpdLink = `https://liliwatt-courtier.onrender.com/rgpd/${req.user.token_rgpd}`;
+    const vendeurNom = `${req.user.prenom} ${req.user.nom_famille}`;
 
-// POST /api/prospect/:row/rgpd — envoie mail RGPD
-app.post('/api/prospect/:row/rgpd', verifyToken, async (req, res) => {
-  try {
-    const { email_client, raison_sociale } = req.body;
-    if (!email_client) return res.status(400).json({ error: 'Email client requis' });
-    const tokenZoho = await getZohoToken();
-    const accountId = process.env.ZOHO_ACCOUNT_ID;
-    if (!tokenZoho || !accountId) return res.status(503).json({ error: 'Zoho non configuré' });
-
-    const vendeurNom = req.user.nom || req.user.email;
     const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-<div style="background:linear-gradient(135deg,#1e1b4b,#7c3aed);padding:32px;border-radius:12px 12px 0 0;text-align:center;">
-<h1 style="color:#fff;font-size:28px;font-weight:800;letter-spacing:3px;margin:0;">LILIWATT</h1>
-<p style="color:rgba(255,255,255,.8);font-size:12px;margin:6px 0 0;">Courtage Énergie B2B & B2C</p>
+<div style="background:linear-gradient(135deg,#1e1b4b,#7c3aed);padding:28px;border-radius:12px 12px 0 0;text-align:center;">
+<h1 style="color:#fff;font-size:26px;font-weight:800;letter-spacing:3px;margin:0;">LILIWATT</h1>
+<p style="color:rgba(255,255,255,.7);font-size:11px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px;">Courtage Énergie B2B & B2C</p>
 </div>
 <div style="background:#f5f3ff;padding:32px;border-radius:0 0 12px 12px;">
-<p style="font-size:16px;color:#1e1b4b;">Bonjour,</p>
-<p style="color:#374151;line-height:1.7;">Suite à notre échange, je vous invite à transmettre vos factures d'énergie pour bénéficier d'une étude gratuite et sans engagement.</p>
-<p style="color:#374151;line-height:1.7;">En quelques clics, déposez vos documents et nous vous proposerons les meilleures offres du marché.</p>
-<div style="text-align:center;margin:24px 0;">
-<a href="https://liliwatt-courtier.onrender.com/rgpd/LIEN_VENDEUR" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;padding:16px 40px;border-radius:50px;text-decoration:none;font-weight:700;font-size:15px;">Transmettre mes factures</a>
+<p style="font-size:15px;color:#1e1b4b;">Bonjour${nom_gerant ? ' ' + nom_gerant : ''},</p>
+<p style="color:#374151;line-height:1.7;">Suite à notre entretien téléphonique, je me permets de vous transmettre ce lien afin de réaliser votre étude énergétique <strong>gratuite et sans engagement</strong>.</p>
+<p style="color:#374151;line-height:1.7;">Merci de bien vouloir nous faire parvenir :</p>
+<ul style="color:#374151;line-height:2;">
+<li>Une <strong>facture hiver</strong> et une <strong>facture été</strong> d'électricité</li>
+<li>Si vous consommez du gaz, une <strong>facture de gaz</strong></li>
+</ul>
+<div style="text-align:center;margin:28px 0;">
+<a href="${rgpdLink}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;padding:16px 40px;border-radius:50px;text-decoration:none;font-weight:700;font-size:15px;">Transmettre mes factures</a>
 </div>
-<p style="color:#6b7280;font-size:13px;">Votre conseiller : ${vendeurNom}</p>
-<hr style="border:1px solid #e9d5ff;margin:24px 0;">
-<p style="font-size:11px;color:#9ca3af;">LILIWATT — LILISTRAT STRATÉGIE SAS — 59 rue de Ponthieu, Bureau 326 — 75008 Paris</p>
+<p style="color:#374151;">Je reste à votre disposition pour tout renseignement.</p>
+<p style="color:#374151;">Cordialement,</p>
+<div style="margin-top:20px;padding-top:16px;border-top:2px solid #e9d5ff;">
+<strong style="color:#1e1b4b;">${vendeurNom}</strong><br>
+<span style="color:#7c3aed;font-size:12px;">LILIWATT — Courtage Énergie</span><br>
+<span style="font-size:12px;color:#6b7280;">${req.user.email}</span>
+</div>
 </div></div>`;
 
-    await axios.post(`https://mail.zoho.eu/api/accounts/${accountId}/messages`, {
-      fromAddress: 'bo@liliwatt.fr', toAddress: email_client,
-      subject: `${vendeurNom} — Votre étude énergie gratuite — ${raison_sociale || ''}`,
-      content: html, mailFormat: 'html'
-    }, { headers: { 'Authorization': `Zoho-oauthtoken ${tokenZoho}`, 'Content-Type': 'application/json' }, timeout: 15000 });
+    // Envoyer via Zoho SMTP
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.zoho.eu', port: 465, secure: true,
+      auth: { user: req.user.email, pass: req.user.mdp }
+    });
+    await transporter.sendMail({
+      from: `"${vendeurNom} — LILIWATT" <${req.user.email}>`,
+      to: email_destinataire,
+      subject: `Suite à notre entretien — Étude énergétique LILIWATT`,
+      html
+    });
 
-    console.log(`📧 RGPD envoyé à ${email_client} par ${req.user.email}`);
+    // Marquer rgpd_envoye dans Sheets
+    const sheet = req.body.sheet || 'BASE BRUTE';
+    const col = await ensureColumn(sheet, 'rgpd_envoye');
+    await updateCell(sheet, req.params.row, col, 'oui');
+    const col2 = await ensureColumn(sheet, 'email_envoye_a');
+    await updateCell(sheet, req.params.row, col2, email_destinataire);
+
+    console.log(`📧 Mail RGPD envoyé à ${email_destinataire} par ${req.user.email}`);
     res.json({ success: true });
-  } catch(e) { console.error('RGPD error:', e.message); res.status(500).json({ error: e.message }); }
+  } catch(e) {
+    console.error('Mail error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ===== HELPERS =====
-async function getZohoToken() {
+// ===== GET /api/kpis =====
+app.get('/api/kpis', verifyToken, async (req, res) => {
   try {
-    const r = await axios.post('https://accounts.zoho.eu/oauth/v2/token', null, {
-      params: { refresh_token: process.env.ZOHO_REFRESH_TOKEN, client_id: process.env.ZOHO_CLIENT_ID, client_secret: process.env.ZOHO_CLIENT_SECRET, grant_type: 'refresh_token' },
-      timeout: 15000
-    });
-    return r.data.access_token;
-  } catch(e) { return null; }
-}
+    const rows = await getSheetData('BASE BRUTE');
+    if (rows.length < 2) return res.json({ success: true, kpis: { total: 0, appels: 0, interesses: 0, rappels: 0, rgpd: 0 }, historique: [] });
+    const headers = rows[0];
+    const vendeurCol = headers.findIndex(h => h.toLowerCase().includes('vendeur_attribue'));
+    const statutCol = headers.findIndex(h => h.toLowerCase().includes('statut_appel'));
+    const rgpdCol = headers.findIndex(h => h.toLowerCase().includes('rgpd_envoye'));
+    const dateCol = headers.findIndex(h => h.toLowerCase().includes('date_dernier_appel'));
+    const nomCol = headers.findIndex(h => h.toLowerCase().includes('raison_sociale'));
 
-function colLetter(idx) {
-  let s = '';
-  while (idx >= 0) { s = String.fromCharCode(65 + (idx % 26)) + s; idx = Math.floor(idx / 26) - 1; }
-  return s;
-}
+    let total = 0, appels = 0, interesses = 0, rappels = 0, rgpd = 0;
+    const historique = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (vendeurCol < 0 || (row[vendeurCol] || '').toLowerCase() !== req.user.email.toLowerCase()) continue;
+      total++;
+      const st = statutCol >= 0 ? (row[statutCol] || '') : '';
+      if (st && st !== 'À appeler') appels++;
+      if (st.toLowerCase().includes('intéressé') || st.toLowerCase().includes('interesse')) interesses++;
+      if (st.toLowerCase().includes('rappeler')) rappels++;
+      if (rgpdCol >= 0 && (row[rgpdCol] || '').toLowerCase() === 'oui') rgpd++;
+      if (dateCol >= 0 && row[dateCol]) {
+        historique.push({ date: row[dateCol], nom: nomCol >= 0 ? row[nomCol] || '' : '', statut: st, row: i + 1 });
+      }
+    }
+
+    historique.sort((a, b) => b.date.localeCompare(a.date));
+    res.json({ success: true, kpis: { total, appels, interesses, rappels, rgpd }, historique: historique.slice(0, 10) });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-
 app.listen(port, () => console.log(`🚀 LILIWATT Prospection sur http://localhost:${port}`));
