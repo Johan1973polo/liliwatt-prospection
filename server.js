@@ -121,7 +121,7 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
     const statutCol = headers.findIndex(h => h.toLowerCase().includes('statut_appel'));
     const secteurCol = headers.findIndex(h => h.toLowerCase().includes('secteur'));
     const villeCol = headers.findIndex(h => h.toLowerCase().includes('ville'));
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = req.user.role === 'admin' || req.user.email === 'johan.mallet@liliwatt.fr' || req.user.email === 'kevin.moreau@liliwatt.fr';
     const fSecteur = (req.query.secteur || '').toLowerCase();
     const fVille = (req.query.ville || '').toLowerCase();
     const fStatut = (req.query.statut || '').toLowerCase();
@@ -147,7 +147,7 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
       }
       const obj = { _row: i + 1 };
       headers.forEach((h, j) => { obj[h] = row[j] || ''; });
-      obj._attribue = attr.toLowerCase() === req.user.email.toLowerCase();
+      obj._attribue = attr.toLowerCase() === req.user.email.toLowerCase() || (isAdmin && !!attr);
       prospects.push(obj);
     }
     // Secteurs et villes uniques pour les dropdowns

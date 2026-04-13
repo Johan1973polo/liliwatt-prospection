@@ -183,6 +183,19 @@ let token = localStorage.getItem('p_token');
 let user = JSON.parse(localStorage.getItem('p_user') || 'null');
 let curRow = null, curSheet = 'BASE BRUTE';
 
+const SECTEURS_FR = {
+  'bakery':'Boulangerie / Pâtisserie','restaurant':'Restaurant','lodging':'Hôtel / Hébergement',
+  'laundry':'Laverie / Pressing','car_repair':'Garage / Auto','supermarket':'Supermarché',
+  'gym':'Salle de sport','spa':'Spa / Bien-être','night_club':'Bar / Discothèque',
+  'campground':'Camping / Gîte','clothing_store':'Commerce / Prêt-à-porter','swimming_pool':'Piscine',
+  'Boulangerie / Pâtisserie':'Boulangerie / Pâtisserie','Restaurant':'Restaurant',
+  'Hôtel / Hébergement':'Hôtel / Hébergement','Laverie / Pressing':'Laverie / Pressing',
+  'Garage / Auto':'Garage / Auto','Supermarché':'Supermarché','Salle de sport':'Salle de sport',
+  'Spa / Bien-être':'Spa / Bien-être','Bar / Discothèque':'Bar / Discothèque','Camping / Gîte':'Camping / Gîte'
+};
+function secteurFR(s){return SECTEURS_FR[s]||s||'—';}
+function isAdmin(){return user && (user.role==='admin'||user.email==='johan.mallet@liliwatt.fr'||user.email==='kevin.moreau@liliwatt.fr');}
+
 if (token && user) showApp(); else showLogin();
 
 function showLogin(){document.getElementById('loginPage').classList.remove('hidden');document.getElementById('appPage').classList.add('hidden');}
@@ -228,22 +241,32 @@ async function loadLeads(){
 function renderCards(prospects, div, sheet){
   if(!prospects.length){div.innerHTML='<p style="color:#9ca3af;text-align:center;padding:20px;">Aucun prospect</p>';return;}
   div.innerHTML=prospects.map(p=>{
-    const tel=p.telephone||'—';const isMine=p._attribue;
-    const stBadge=p.statut_appel?'<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#ede9fe;color:#7c3aed;font-weight:600;">'+p.statut_appel+'</span>':'';
+    const tel=p.telephone||'—';
+    const isMine=p._attribue;
+    const attr=(p.vendeur_attribue||'').trim();
+    const attrByOther=attr&&!isMine&&!isAdmin();
+    if(attrByOther) return ''; // masquer fiches prises par d'autres (vendeur)
+    const stColors={'Intéressé':'#22c55e','À rappeler':'#f59e0b','Pas intéressé':'#ef4444','Faux numéro':'#6b7280','Ne répond pas':'#3b82f6','À appeler':'#9ca3af','Appelé':'#7c3aed'};
+    const sc=stColors[p.statut_appel]||'#9ca3af';
+    const stBadge=p.statut_appel?'<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:'+sc+'18;color:'+sc+';font-weight:600;">'+p.statut_appel+'</span>':'';
+    const attrBadge=isAdmin()&&attr&&!isMine?'<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#fef3c7;color:#92400e;font-weight:600;">'+attr.split('@')[0]+'</span>':'';
+
+    let buttons='';
+    if(isMine||isAdmin()){
+      buttons='<button class="btn btn-sm" onclick="openStatut('+p._row+',\''+sheet+'\',\''+esc(p.raison_sociale)+'\',\''+esc(p.statut_appel||'')+'\',\''+esc(p.note_appel||'')+'\')">✏️ Statut</button>' +
+        '<button class="btn btn-sm btn-pink" onclick="openMail('+p._row+',\''+sheet+'\',\''+esc(p.raison_sociale)+'\')">📧 Mail RGPD</button>';
+    } else if(!attr){
+      buttons='<button class="btn btn-sm btn-outline" onclick="prendre('+p._row+',\''+sheet+'\')">📌 Prendre cette fiche</button>';
+    }
+
     return '<div class="card">' +
-      '<div style="display:flex;justify-content:space-between;align-items:start;"><div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:start;gap:6px;"><div>' +
       '<div class="name">🏪 '+(p.raison_sociale||'—')+'</div>' +
       '<div class="addr">📍 '+(p.adresse||'—')+', '+(p.ville||'')+'</div>' +
-      '<div class="meta"><span>'+(p.secteur||'—')+'</span>'+(p.note_google?'<span>⭐ '+p.note_google+'</span>':'')+(p.nb_avis?'<span>'+p.nb_avis+' avis</span>':'')+'</div>' +
-      '</div>'+stBadge+'</div>' +
+      '<div class="meta"><span>'+secteurFR(p.secteur)+'</span>'+(p.note_google?'<span>⭐ '+p.note_google+'</span>':'')+(p.nb_avis?'<span>'+p.nb_avis+' avis</span>':'')+'</div>' +
+      '</div><div style="display:flex;gap:4px;flex-wrap:wrap;">'+stBadge+attrBadge+'</div></div>' +
       '<div class="tel">📞 '+tel+'</div>' +
-      '<div class="actions">' +
-      (isMine ?
-        '<button class="btn btn-sm" onclick="openStatut('+p._row+',\''+sheet+'\',\''+esc(p.raison_sociale)+'\',\''+(p.statut_appel||'')+'\',\''+esc(p.note_appel||'')+'\')">✏️ Statut</button>' +
-        '<button class="btn btn-sm btn-pink" onclick="openMail('+p._row+',\''+sheet+'\',\''+esc(p.raison_sociale)+'\')">📧 Mail</button>'
-        : '<button class="btn btn-sm btn-outline" onclick="prendre('+p._row+',\''+sheet+'\')">📌 Prendre cette fiche</button>'
-      ) +
-      '</div></div>';
+      '<div class="actions">'+buttons+'</div></div>';
   }).join('');
 }
 
