@@ -162,7 +162,7 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
   } catch(e) { console.error('Brute error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
-// ===== GET /api/prospects/leads =====
+// ===== GET /api/prospects/leads (Base Premium) =====
 app.get('/api/prospects/leads', verifyToken, async (req, res) => {
   try {
     let rows;
@@ -170,14 +170,25 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
     if (rows.length < 2) return res.json({ success: true, prospects: [] });
     const headers = rows[0];
     const vendeurCol = headers.findIndex(h => h.toLowerCase().includes('vendeur_attribue'));
+    const g = (row, name) => { const i = headers.findIndex(h => h.toLowerCase().includes(name)); return i >= 0 && i < row.length ? row[i] : ''; };
     const prospects = [];
     for (let i = 1; i < rows.length; i++) {
-      const attr = vendeurCol >= 0 ? (row = rows[i], (row[vendeurCol] || '').trim()) : '';
-      if (attr.toLowerCase() !== req.user.email.toLowerCase()) continue;
       const row = rows[i];
-      const obj = { _row: i + 1, _sheet: 'LEADS OHM', _attribue: true };
-      headers.forEach((h, j) => { obj[h] = row[j] || ''; });
-      prospects.push(obj);
+      const attr = vendeurCol >= 0 ? (row[vendeurCol] || '').trim() : '';
+      if (attr.toLowerCase() !== req.user.email.toLowerCase()) continue;
+      // Vendeur : colonnes limitées (pas de score, marge, PDL, prix)
+      prospects.push({
+        _row: i + 1, _sheet: 'LEADS OHM', _attribue: true,
+        raison_sociale: g(row, 'raison_sociale'),
+        siren: g(row, 'siren'),
+        signataire: g(row, 'signataire'),
+        email_signataire: g(row, 'email_signataire'),
+        tel_signataire: g(row, 'tel_signataire'),
+        adresse: g(row, 'adresse'),
+        statut_appel: g(row, 'statut_appel'),
+        note_appel: g(row, 'note_appel'),
+        vendeur_attribue: attr
+      });
     }
     res.json({ success: true, prospects });
   } catch(e) { res.status(500).json({ error: e.message }); }
