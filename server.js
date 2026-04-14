@@ -79,7 +79,7 @@ app.post('/api/auth/login', async (req, res) => {
 // ===== HELPERS SHEETS =====
 async function getSheetData(sheetName) {
   const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
-  const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: `'${sheetName}'!A:Z` });
+  const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: `'${sheetName}'!A:ZZ` });
   return r.data.values || [];
 }
 
@@ -171,9 +171,9 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
     console.log('💎 LEADS OHM - Nb lignes:', rows.length);
     if (rows.length < 2) return res.json({ success: true, prospects: [] });
     const headers = rows[0];
-    console.log('💎 LEADS OHM headers:', headers.slice(0, 10).join(' | '));
+    console.log('💎 TOUS les headers:', headers.map((h,i) => i+':'+h).join(' | '));
     const vendeurCol = headers.findIndex(h => h.toLowerCase().includes('vendeur_attribue'));
-    console.log('💎 vendeur_attribue col index:', vendeurCol);
+    console.log('💎 vendeur_attribue col index:', vendeurCol, '| Nb colonnes:', headers.length);
     const g = (row, name) => { const i = headers.findIndex(h => h.toLowerCase().includes(name)); return i >= 0 && i < row.length ? row[i] : ''; };
     const prospects = [];
     let totalForUser = 0;
@@ -573,17 +573,19 @@ async function initLeadsOhmColumns() {
     const sheets = getSheetsClient();
     const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: "'LEADS OHM'!1:1" });
     const headers = (r.data.values || [[]])[0];
+    console.log('✅ LEADS OHM colonnes actuelles:', headers.length, '→', headers.slice(-10).join(' | '));
     const needed = ['vendeur_attribue', 'statut_appel', 'note_appel', 'date_rappel', 'rgpd_envoye', 'date_contact'];
     const missing = needed.filter(h => !headers.some(x => x.toLowerCase().trim() === h));
     if (missing.length > 0) {
       const startCol = colLetter(headers.length);
+      console.log('📝 Ajout colonnes à partir de', startCol, ':', missing.join(', '));
       await sheets.spreadsheets.values.update({
         spreadsheetId: MASTER_SHEET_ID, range: `'LEADS OHM'!${startCol}1`,
         valueInputOption: 'RAW', requestBody: { values: [missing] }
       });
       console.log('✅ Colonnes LEADS OHM ajoutées au démarrage:', missing.join(', '));
     } else {
-      console.log('✅ Colonnes LEADS OHM OK');
+      console.log('✅ Colonnes LEADS OHM OK — vendeur_attribue trouvée');
     }
   } catch(e) { console.warn('⚠️ Init LEADS OHM:', e.message); }
 }
