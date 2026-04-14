@@ -135,15 +135,36 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
 
     <!-- ADMIN — visible uniquement si role=admin -->
     <div class="panel" id="tab-admin">
-      <div class="card">
-        <h2>📊 Stats BASE BRUTE</h2>
+      <!-- Cartes navigation -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+        <div onclick="showAdminSub('stats')" id="acard-stats" style="background:#7c3aed;color:#fff;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
+          <div style="font-size:32px;margin-bottom:6px;">📊</div>
+          <div style="font-weight:700;font-size:14px;">Statistiques</div>
+          <div style="font-size:11px;opacity:.8;">BASE BRUTE</div>
+        </div>
+        <div onclick="showAdminSub('recharger')" id="acard-recharger" style="background:#fff;color:#1e1b4b;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
+          <div style="font-size:32px;margin-bottom:6px;">⚡</div>
+          <div style="font-weight:700;font-size:14px;">Recharger</div>
+          <div style="font-size:11px;color:#6b7280;">BASE BRUTE</div>
+        </div>
+        <div onclick="showAdminSub('premium')" id="acard-premium" style="background:#fff;color:#1e1b4b;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
+          <div style="font-size:32px;margin-bottom:6px;">💎</div>
+          <div style="font-weight:700;font-size:14px;">Attribution</div>
+          <div style="font-size:11px;color:#6b7280;">Base Premium</div>
+        </div>
+      </div>
+
+      <!-- Section Stats -->
+      <div id="asub-stats" class="card">
+        <h2 style="color:#1e1b4b;">📊 Statistiques BASE BRUTE</h2>
         <div class="kpis" id="adminKpis"></div>
         <h4 style="color:#1e1b4b;margin:16px 0 8px;">Par vendeur</h4>
         <div id="adminVendeurs" style="font-size:12px;"></div>
       </div>
 
-      <div class="card" style="margin-top:16px;">
-        <h3 style="color:#1e1b4b;margin-bottom:12px;">⚡ Recharger BASE BRUTE</h3>
+      <!-- Section Recharger -->
+      <div id="asub-recharger" class="card" style="display:none;">
+        <h2 style="color:#1e1b4b;">⚡ Recharger BASE BRUTE</h2>
         <div style="display:flex;gap:10px;margin-bottom:12px;">
           <input type="text" id="scrapVille" placeholder="Ex: Lyon, Marseille..." style="flex:1;padding:8px 12px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:13px;">
         </div>
@@ -168,8 +189,9 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         <div id="scrapResult" style="margin-top:12px;"></div>
       </div>
 
-      <div class="card" style="margin-top:16px;">
-        <h3 style="color:#1e1b4b;margin-bottom:12px;">💎 Attribution Base Premium</h3>
+      <!-- Section Attribution Premium -->
+      <div id="asub-premium" class="card" style="display:none;">
+        <h2 style="color:#1e1b4b;">💎 Attribution Base Premium</h2>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
           <select id="leadVendeur" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Vendeur cible...</option></select>
           <select id="leadSeg" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Segment</option><option>C2</option><option>C3</option><option>C4</option><option>C5</option><option>GAZ</option></select>
@@ -183,9 +205,11 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         </div>
         <div id="leadsPagination" style="font-size:12px;color:#6b7280;margin-bottom:6px;"></div>
         <div id="leadsTable" style="font-size:11px;overflow-x:auto;"></div>
-        <div id="leadsAction" style="display:none;margin-top:10px;display:flex;gap:8px;">
-          <button class="btn btn-sm" onclick="toggleLeadCb(true)">✅ Sélectionner 20 premiers</button>
-          <button class="btn btn-pink" onclick="attribLeads()" id="btnAttrib" style="flex:1;"></button>
+        <div id="leadsAction" style="display:none;margin-top:10px;">
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-sm" onclick="toggleLeadCb(true)">✅ 20 premiers</button>
+            <button class="btn btn-pink" onclick="attribLeads()" id="btnAttrib" style="flex:1;"></button>
+          </div>
         </div>
       </div>
     </div>
@@ -435,6 +459,15 @@ async function loadKpis(){
 }
 
 // ===== ADMIN =====
+function showAdminSub(name) {
+  ['stats','recharger','premium'].forEach(s => {
+    document.getElementById('asub-' + s).style.display = s === name ? 'block' : 'none';
+    const card = document.getElementById('acard-' + s);
+    if (s === name) { card.style.background = '#7c3aed'; card.style.color = '#fff'; }
+    else { card.style.background = '#fff'; card.style.color = '#1e1b4b'; }
+  });
+}
+
 // Custom secteurs
 function loadCustomSecteurs() {
   const saved = JSON.parse(localStorage.getItem('custom_secteurs') || '[]');
