@@ -217,6 +217,15 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
 </div>
 
 <!-- Modal Statut -->
+<!-- Modal Fiche Premium -->
+<div class="modal" id="mFichePremium">
+  <div class="modal-box" style="max-width:600px;">
+    <button class="close" onclick="closeM('mFichePremium')">✕</button>
+    <h3 id="fpTitre" style="margin-bottom:16px;"></h3>
+    <div id="fpBody" style="font-size:13px;"></div>
+  </div>
+</div>
+
 <div class="modal" id="mStatut">
   <div class="modal-box">
     <button class="close" onclick="closeM('mStatut')">✕</button>
@@ -586,7 +595,7 @@ async function searchLeads(page) {
       '<th style="'+th+'"><input type="checkbox" onchange="toggleLeadCb(this.checked)"></th>' +
       '<th style="'+th+'">Société</th><th style="'+th+'">SIREN</th><th style="'+th+'">Score</th>' +
       '<th style="'+th+'">Statut OHM</th><th style="'+th+'">Signataire</th><th style="'+th+'">Email</th><th style="'+th+'">Tél</th>' +
-      '<th style="'+th+'">Segment</th><th style="'+th+'">PDL</th><th style="'+th+'">Fin</th><th style="'+th+'">Attribué</th>' +
+      '<th style="'+th+'">Segment</th><th style="'+th+'">PDL</th><th style="'+th+'">Fin</th><th style="'+th+'">Attribué</th><th style="'+th+'"></th>' +
       '</tr></thead><tbody>' +
       _adminLeads.map((p,i) => {
         const attr = (p.vendeur_attribue||'').trim();
@@ -602,7 +611,8 @@ async function searchLeads(page) {
           '<td style="padding:4px 6px;">'+(p.segments||p.typologie_contrat||'—')+'</td>' +
           '<td style="padding:4px 6px;">'+(p.nb_pdl||p.nbr_sites||'—')+'</td>' +
           '<td style="padding:4px 6px;">'+(p.date_fin_livraison||'—')+'</td>' +
-          '<td style="padding:4px 6px;color:'+(attr?'#22c55e':'#9ca3af')+';">'+(attr?attr.split('@')[0]:'—')+'</td></tr>';
+          '<td style="padding:4px 6px;color:'+(attr?'#22c55e':'#9ca3af')+';">'+(attr?attr.split('@')[0]:'—')+'</td>' +
+          '<td style="padding:4px 6px;"><button onclick="showFichePremium('+i+')" style="background:none;border:none;cursor:pointer;font-size:14px;">👁</button></td></tr>';
       }).join('') + '</tbody></table></div>';
     // Pagination
     let pag = '';
@@ -613,6 +623,30 @@ async function searchLeads(page) {
     document.getElementById('leadsAction').style.display = 'block';
     updAttribBtn();
   } catch(e) { div.innerHTML = '<p style="color:#ef4444;">Erreur</p>'; }
+}
+
+function showFichePremium(idx) {
+  const p = _adminLeads[idx]; if (!p) return;
+  document.getElementById('fpTitre').textContent = (p.raison_sociale || 'Prospect') + (p.siren ? ' — ' + p.siren : '');
+  const r = (l, v) => v && v !== 'Aucun(e)' ? '<tr><td style="padding:3px 0;color:#6b7280;font-weight:600;width:140px;">'+l+'</td><td style="color:#1e1b4b;">'+v+'</td></tr>' : '';
+  const sec = (t) => '<tr><td colspan="2" style="padding:12px 0 4px;font-weight:700;color:#7c3aed;font-size:13px;border-bottom:1px solid #ede9fe;">'+t+'</td></tr>';
+  const pdls = (p.pdls || '').split('|').map(x => x.trim()).filter(Boolean);
+  const pdlBadges = pdls.length ? pdls.map(x => '<span style="display:inline-block;background:#ede9fe;color:#7c3aed;padding:2px 8px;border-radius:6px;font-size:11px;font-family:monospace;margin:2px;">'+x+'</span>').join(' ') : '—';
+  const attr = (p.vendeur_attribue||'').trim();
+  document.getElementById('fpBody').innerHTML = '<table style="width:100%;">' +
+    sec('Informations générales') +
+    r('Adresse', p.adresse) + r('Statut OHM', p.statut) + r('Score', p.score) +
+    r('Pay rank', p.pay_rank) + r('Date début', p.date_debut_livraison) + r('Date fin', p.date_fin_livraison) +
+    sec('Contact') +
+    r('Signataire', p.signataire) + r('Email', p.email_signataire) + r('Téléphone', p.tel_signataire) +
+    sec('Contrat') +
+    r('Segment', p.segments || p.typologie_contrat) + r('Nb PDL', p.nb_pdl || p.nbr_sites) +
+    r('Volume MWh', p.volume_total) + r('Marge courtier', p.marge_courtier) + r('Fournisseur', p.courtier_final || p.courtier) +
+    sec('Points de livraison') +
+    '<tr><td colspan="2" style="padding:4px 0;">' + pdlBadges + '</td></tr>' +
+    (attr ? sec('Attribution') + r('Vendeur', attr) : '') +
+    '</table>';
+  document.getElementById('mFichePremium').style.display = 'block';
 }
 
 function toggleLeadCb(c) { document.querySelectorAll('.lead_cb').forEach(x => x.checked = c); updAttribBtn(); }

@@ -457,7 +457,7 @@ app.post('/api/admin/scraper', verifyToken, isAdminMW, async (req, res) => {
 
     // Vérifier log
     const fs = require('fs');
-    const logFile = '/Users/strategyglobal/Desktop/scraping_log.json';
+    const logFile = process.env.SCRAPING_LOG || '/tmp/scraping_log.json';
     let log = {};
     try { log = JSON.parse(fs.readFileSync(logFile, 'utf8')); } catch(e) {}
     const key = `${secteur}_${ville.toLowerCase().replace(/\s/g,'_')}`;
@@ -566,4 +566,29 @@ app.post('/api/admin/attribuer-leads', verifyToken, isAdminMW, async (req, res) 
 });
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.listen(port, () => console.log(`🚀 LILIWATT Prospection sur http://localhost:${port}`));
+// Auto-init colonnes LEADS OHM au démarrage
+async function initLeadsOhmColumns() {
+  if (!DRIVE_CREDENTIALS || !MASTER_SHEET_ID) return;
+  try {
+    const sheets = getSheetsClient();
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: "'LEADS OHM'!1:1" });
+    const headers = (r.data.values || [[]])[0];
+    const needed = ['vendeur_attribue', 'statut_appel', 'note_appel', 'date_rappel', 'rgpd_envoye', 'date_contact'];
+    const missing = needed.filter(h => !headers.some(x => x.toLowerCase().trim() === h));
+    if (missing.length > 0) {
+      const startCol = colLetter(headers.length);
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: MASTER_SHEET_ID, range: `'LEADS OHM'!${startCol}1`,
+        valueInputOption: 'RAW', requestBody: { values: [missing] }
+      });
+      console.log('✅ Colonnes LEADS OHM ajoutées au démarrage:', missing.join(', '));
+    } else {
+      console.log('✅ Colonnes LEADS OHM OK');
+    }
+  } catch(e) { console.warn('⚠️ Init LEADS OHM:', e.message); }
+}
+
+app.listen(port, () => {
+  console.log(`🚀 LILIWATT Prospection sur http://localhost:${port}`);
+  initLeadsOhmColumns();
+});
