@@ -165,17 +165,23 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
 // ===== GET /api/prospects/leads (Base Premium) =====
 app.get('/api/prospects/leads', verifyToken, async (req, res) => {
   try {
+    console.log('💎 LEADS OHM - Sheet ID:', MASTER_SHEET_ID, '| User:', req.user.email);
     let rows;
-    try { rows = await getSheetData('LEADS OHM'); } catch(e) { return res.json({ success: true, prospects: [] }); }
+    try { rows = await getSheetData('LEADS OHM'); } catch(e) { console.error('💎 LEADS OHM read error:', e.message); return res.json({ success: true, prospects: [] }); }
+    console.log('💎 LEADS OHM - Nb lignes:', rows.length);
     if (rows.length < 2) return res.json({ success: true, prospects: [] });
     const headers = rows[0];
+    console.log('💎 LEADS OHM headers:', headers.slice(0, 10).join(' | '));
     const vendeurCol = headers.findIndex(h => h.toLowerCase().includes('vendeur_attribue'));
+    console.log('💎 vendeur_attribue col index:', vendeurCol);
     const g = (row, name) => { const i = headers.findIndex(h => h.toLowerCase().includes(name)); return i >= 0 && i < row.length ? row[i] : ''; };
     const prospects = [];
+    let totalForUser = 0;
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const attr = vendeurCol >= 0 ? (row[vendeurCol] || '').trim() : '';
       if (attr.toLowerCase() !== req.user.email.toLowerCase()) continue;
+      totalForUser++;
       // Vendeur : colonnes limitées (pas de score, marge, PDL, prix)
       prospects.push({
         _row: i + 1, _sheet: 'LEADS OHM', _attribue: true,
@@ -190,8 +196,9 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
         vendeur_attribue: attr
       });
     }
+    console.log('💎 Lignes trouvées pour', req.user.email, ':', totalForUser);
     res.json({ success: true, prospects });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('💎 LEADS error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
 // ===== POST /api/prospects/prendre/:row =====
