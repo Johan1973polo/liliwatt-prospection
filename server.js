@@ -464,8 +464,10 @@ app.get('/api/admin/leads-ohm', verifyToken, isAdminMW, async (req, res) => {
     const segF = (req.query.segment || '').toUpperCase();
     const anneeF = req.query.annee_fin || '';
     const statutF = req.query.statut_ohm || '';
-    const volMin = parseFloat(req.query.volume_min || '0');
+    const scoreMin = parseInt(req.query.score_min || '0');
     const nonAttr = req.query.non_attribues === 'true';
+    const hasSign = req.query.has_signataire === 'true';
+    const hasEmail = req.query.has_email === 'true';
     const page = parseInt(req.query.page || '1');
     const perPage = Math.min(parseInt(req.query.per_page || '50'), 50);
 
@@ -477,10 +479,13 @@ app.get('/api/admin/leads-ohm', verifyToken, isAdminMW, async (req, res) => {
       if (segF) { const s = (g(row, 'segment') || g(row, 'typologie') || '').toUpperCase(); if (!s.includes(segF)) continue; }
       if (anneeF && !(g(row, 'date_fin') || '').includes(anneeF)) continue;
       if (statutF && (g(row, 'statut') || '') !== statutF) continue;
-      if (volMin > 0) { const v = parseFloat((g(row, 'volume') || '0').replace(',', '.')); if (v < volMin) continue; }
+      if (scoreMin > 0) { const sc = parseInt(g(row, 'score') || '0'); if (isNaN(sc) || sc < scoreMin) continue; }
+      if (hasSign && !(g(row, 'signataire') || '').trim()) continue;
+      if (hasEmail && !(g(row, 'email_signataire') || '').trim()) continue;
       if (nonAttr && (g(row, 'vendeur_attribue') || '').trim()) continue;
       filtered.push({ _row: i + 1, _data: row });
     }
+    console.log('💎 BASE PREMIUM liste:', filtered.length, 'résultats');
 
     const total = filtered.length;
     const pages = Math.ceil(total / perPage);
