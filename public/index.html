@@ -134,7 +134,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
     </div>
 
     <!-- ADMIN — visible uniquement si role=admin -->
-    <div class="panel" id="tab-admin" style="display:none;">
+    <div class="panel" id="tab-admin">
       <div class="card">
         <h2>📊 Stats BASE BRUTE</h2>
         <div class="kpis" id="adminKpis"></div>
@@ -461,7 +461,8 @@ async function loadAdminStats() {
   try {
     const r = await fetch('/api/admin/stats', { headers: { 'Authorization': 'Bearer ' + token } });
     const d = await r.json();
-    if (!d.success) return;
+    console.log('Admin stats:', d);
+    if (!d.success) { document.getElementById('adminKpis').innerHTML = '<p style="color:#ef4444;">Erreur: '+(d.error||'')+'</p>'; return; }
     const s = d.stats;
     const pct = s.total ? Math.round(s.traitees/s.total*100) : 0;
     document.getElementById('adminKpis').innerHTML =
