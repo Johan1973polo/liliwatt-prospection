@@ -406,12 +406,49 @@ app.get('/api/admin/stats', verifyToken, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ===== ADMIN SCRAPER =====
+// ===== ADMIN MIDDLEWARE =====
 const isAdminMW = (req, res, next) => {
   const a = req.user.role === 'admin' || req.user.email === 'johan.mallet@liliwatt.fr' || req.user.email === 'kevin.moreau@liliwatt.fr';
   if (!a) return res.status(403).json({ error: 'Admin only' });
   next();
 };
+
+// ===== INIT LEADS OHM — ajouter colonnes manquantes =====
+app.get('/api/admin/init-leads-ohm', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const sheets = getSheetsClient();
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SHEET_ID, range: "'LEADS OHM'!1:1" });
+    const headers = (r.data.values || [[]])[0];
+    console.log('📋 LEADS OHM headers actuels:', headers.length, 'colonnes');
+
+    const toAdd = ['vendeur_attribue', 'statut_appel', 'note_appel', 'date_rappel', 'rgpd_envoye', 'date_contact'];
+    const added = [];
+
+    for (const col of toAdd) {
+      if (!headers.some(h => h.toLowerCase().trim() === col.toLowerCase())) {
+        const nextCol = colLetter(headers.length + added.length);
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: MASTER_SHEET_ID,
+          range: `'LEADS OHM'!${nextCol}1`,
+          valueInputOption: 'RAW',
+          requestBody: { values: [[col]] }
+        });
+        added.push(col);
+        console.log(`  ✅ Colonne ajoutée: ${col} → ${nextCol}`);
+      } else {
+        console.log(`  ⏭️ Colonne existante: ${col}`);
+      }
+    }
+
+    console.log('📋 Init terminé:', added.length, 'colonnes ajoutées');
+    res.json({ success: true, added, existing: headers.length, total: headers.length + added.length });
+  } catch(e) {
+    console.error('❌ Init LEADS OHM error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ===== ADMIN SCRAPER =====
 
 app.post('/api/admin/scraper', verifyToken, isAdminMW, async (req, res) => {
   try {
