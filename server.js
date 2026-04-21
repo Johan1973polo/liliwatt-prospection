@@ -565,7 +565,7 @@ app.get('/api/admin/leads-ohm', verifyToken, isAdminMW, async (req, res) => {
       if (segF) { const s = (g(row, 'segment') || g(row, 'typologie') || '').toUpperCase(); if (!s.includes(segF)) continue; }
       if (anneeF && !(g(row, 'date_fin') || '').includes(anneeF)) continue;
       if (dDebut || dFin) {
-        const d = parseDateFin(g(row, 'date_fin_livraison'));
+        const d = parseDateFin(g(row, 'date_debut_livraison'));
         if (!d) continue;
         if (dDebut && d < dDebut) continue;
         if (dFin && d > dFin) continue;
