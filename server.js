@@ -535,12 +535,29 @@ app.get('/api/admin/leads-ohm', verifyToken, isAdminMW, async (req, res) => {
     const g = (row, name) => { const i = headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase())); return i >= 0 && i < row.length ? row[i] : ''; };
 
     function parseDateFin(str) {
-      if (!str) return null;
-      if (str.includes('/')) { const p = str.split('/'); return new Date(p[2], p[1]-1, p[0]); }
-      return new Date(str);
+      if (!str || !str.trim()) return null;
+      str = str.trim();
+      // DD/MM/YYYY
+      if (str.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+        const [d,m,y] = str.split('/');
+        return new Date(parseInt(y), parseInt(m)-1, parseInt(d));
+      }
+      // YYYY-MM-DD
+      if (str.match(/^\d{4}-\d{2}-\d{2}$/)) return new Date(str);
+      // MM/YYYY
+      if (str.match(/^\d{1,2}\/\d{4}$/)) {
+        const [m,y] = str.split('/');
+        return new Date(parseInt(y), parseInt(m)-1, 1);
+      }
+      // Nombre Excel
+      if (str.match(/^\d+$/)) {
+        const epoch = new Date(1899, 11, 30);
+        return new Date(epoch.getTime() + parseInt(str) * 86400000);
+      }
+      return null;
     }
     const dDebut = dateFinDebut ? new Date(dateFinDebut + '-01') : null;
-    const dFin = dateFinFin ? new Date(dateFinFin + '-28') : null; // fin du mois approx
+    const dFin = dateFinFin ? new Date(parseInt(dateFinFin.split('-')[0]), parseInt(dateFinFin.split('-')[1]), 0) : null; // dernier jour du mois
 
     const filtered = [];
     for (let i = 1; i < rows.length; i++) {
