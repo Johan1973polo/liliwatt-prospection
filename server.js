@@ -182,7 +182,7 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
       const attr = vendeurCol >= 0 ? (row[vendeurCol] || '').trim() : '';
       if (attr.toLowerCase() !== req.user.email.toLowerCase()) continue;
       totalForUser++;
-      // Vendeur : colonnes limitées (pas de score, marge, PDL, prix)
+      // Vendeur : colonnes essentielles + score + dates + volume + segment
       prospects.push({
         _row: i + 1, _sheet: 'LEADS OHM', _attribue: true,
         raison_sociale: g(row, 'raison_sociale'),
@@ -191,6 +191,13 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
         email_signataire: g(row, 'email_signataire'),
         tel_signataire: g(row, 'tel_signataire'),
         adresse: g(row, 'adresse'),
+        score: g(row, 'score'),
+        pay_rank: g(row, 'pay_rank'),
+        observation_pay_rank: g(row, 'observation_pay_rank'),
+        date_fin_livraison: g(row, 'date_fin_livraison'),
+        volume_total: g(row, 'volume_total'),
+        segments: g(row, 'segments') || g(row, 'typologie'),
+        energie: g(row, 'energie'),
         statut_appel: g(row, 'statut_appel'),
         note_appel: g(row, 'note_appel'),
         vendeur_attribue: attr
