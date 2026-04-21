@@ -634,7 +634,9 @@ async function searchLeads(page) {
           '<td style="padding:4px 6px;">'+(p.nb_pdl||p.nbr_sites||'—')+'</td>' +
           '<td style="padding:4px 6px;">'+(p.date_fin_livraison||'—')+'</td>' +
           '<td style="padding:4px 6px;color:'+(attr?'#22c55e':'#9ca3af')+';">'+(attr?attr.split('@')[0]:'—')+'</td>' +
-          '<td style="padding:4px 6px;"><button onclick="showFichePremium('+i+')" style="background:none;border:none;cursor:pointer;font-size:14px;">👁</button></td></tr>';
+          '<td style="padding:4px 6px;"><button onclick="showFichePremium('+i+')" style="background:none;border:none;cursor:pointer;font-size:14px;">👁</button>' +
+          (attr ? '<button onclick="retirerLead('+p._row+')" style="background:#fef2f2;color:#dc2626;border:none;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;margin-left:4px;font-weight:600;">✖</button>' : '') +
+          '</td></tr>';
       }).join('') + '</tbody></table></div>';
     // Pagination
     let pag = '';
@@ -676,6 +678,17 @@ function updAttribBtn() {
   const n = document.querySelectorAll('.lead_cb:checked').length;
   const v = document.getElementById('leadVendeur').value;
   document.getElementById('btnAttrib').textContent = '✅ Attribuer ' + n + ' leads' + (v ? ' à ' + v.split('@')[0] : '');
+}
+
+async function retirerLead(row) {
+  if (!confirm('Retirer cette fiche de son vendeur ?')) return;
+  try {
+    await fetch('/api/admin/retirer-lead', {
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ row })
+    });
+    searchLeads(_leadsPage);
+  } catch(e) { alert('Erreur: ' + e.message); }
 }
 
 async function attribLeads() {

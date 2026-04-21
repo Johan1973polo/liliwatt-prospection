@@ -182,6 +182,14 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
       const attr = vendeurCol >= 0 ? (row[vendeurCol] || '').trim() : '';
       if (attr.toLowerCase() !== req.user.email.toLowerCase()) continue;
       totalForUser++;
+      // Debug première fiche
+      if (totalForUser === 1) {
+        console.log('💎 DEBUG row length:', row.length, '| signataire col:', headers.findIndex(h => h.toLowerCase().includes('signataire')),
+          '| score col:', headers.findIndex(h => h.toLowerCase().includes('score')),
+          '| date_fin col:', headers.findIndex(h => h.toLowerCase().includes('date_fin')),
+          '| segments col:', headers.findIndex(h => h.toLowerCase().includes('segments')));
+        console.log('💎 DEBUG values: signataire=', g(row,'signataire'), '| score=', g(row,'score'), '| date_fin=', g(row,'date_fin_livraison'), '| segments=', g(row,'segments'));
+      }
       // Vendeur : colonnes essentielles + score + dates + volume + segment
       prospects.push({
         _row: i + 1, _sheet: 'LEADS OHM', _attribue: true,
@@ -569,6 +577,18 @@ app.post('/api/admin/attribuer-leads', verifyToken, isAdminMW, async (req, res) 
     }
     console.log(`⭐ ${rowsList.length} leads attribués à ${vendeur_email}`);
     res.json({ success: true, attribues: rowsList.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Retirer un lead attribué
+app.post('/api/admin/retirer-lead', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const { row } = req.body;
+    if (!row) return res.status(400).json({ error: 'row requis' });
+    const col = await ensureColumn('LEADS OHM', 'vendeur_attribue');
+    await updateCell('LEADS OHM', row, col, '');
+    console.log(`✖ Lead ligne ${row} retiré (vendeur_attribue vidé)`);
+    res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
