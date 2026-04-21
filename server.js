@@ -522,6 +522,8 @@ app.get('/api/admin/leads-ohm', verifyToken, isAdminMW, async (req, res) => {
     const headers = rows[0];
     const segF = (req.query.segment || '').toUpperCase();
     const anneeF = req.query.annee_fin || '';
+    const dateFinDebut = req.query.date_fin_debut || ''; // format YYYY-MM
+    const dateFinFin = req.query.date_fin_fin || '';     // format YYYY-MM
     const statutF = req.query.statut_ohm || '';
     const scoreMin = parseInt(req.query.score_min || '0');
     const nonAttr = req.query.non_attribues === 'true';
@@ -532,11 +534,25 @@ app.get('/api/admin/leads-ohm', verifyToken, isAdminMW, async (req, res) => {
 
     const g = (row, name) => { const i = headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase())); return i >= 0 && i < row.length ? row[i] : ''; };
 
+    function parseDateFin(str) {
+      if (!str) return null;
+      if (str.includes('/')) { const p = str.split('/'); return new Date(p[2], p[1]-1, p[0]); }
+      return new Date(str);
+    }
+    const dDebut = dateFinDebut ? new Date(dateFinDebut + '-01') : null;
+    const dFin = dateFinFin ? new Date(dateFinFin + '-28') : null; // fin du mois approx
+
     const filtered = [];
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       if (segF) { const s = (g(row, 'segment') || g(row, 'typologie') || '').toUpperCase(); if (!s.includes(segF)) continue; }
       if (anneeF && !(g(row, 'date_fin') || '').includes(anneeF)) continue;
+      if (dDebut || dFin) {
+        const d = parseDateFin(g(row, 'date_fin_livraison'));
+        if (!d) continue;
+        if (dDebut && d < dDebut) continue;
+        if (dFin && d > dFin) continue;
+      }
       if (statutF && (g(row, 'statut') || '') !== statutF) continue;
       if (scoreMin > 0) { const sc = parseInt(g(row, 'score') || '0'); if (isNaN(sc) || sc < scoreMin) continue; }
       if (hasSign && !(g(row, 'signataire') || '').trim()) continue;
@@ -577,6 +593,42 @@ app.post('/api/admin/attribuer-leads', verifyToken, isAdminMW, async (req, res) 
     }
     console.log(`⭐ ${rowsList.length} leads attribués à ${vendeur_email}`);
     res.json({ success: true, attribues: rowsList.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Lister les fiches attribuées
+app.get('/api/admin/leads-attribues', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    let rows;
+    try { rows = await getSheetData('LEADS OHM'); } catch(e) { return res.json({ success: true, prospects: [] }); }
+    if (rows.length < 2) return res.json({ success: true, prospects: [] });
+    const headers = rows[0];
+    const g = (row, name) => { const i = headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase())); return i >= 0 && i < row.length ? row[i] : ''; };
+    const vendeurF = (req.query.vendeur || '').toLowerCase();
+
+    const prospects = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const attr = g(row, 'vendeur_attribue').trim();
+      if (!attr) continue;
+      if (vendeurF && !attr.toLowerCase().includes(vendeurF)) continue;
+      prospects.push({
+        _row: i + 1,
+        raison_sociale: g(row, 'raison_sociale'),
+        siren: g(row, 'siren'),
+        signataire: g(row, 'signataire'),
+        tel_signataire: g(row, 'tel_signataire'),
+        email_signataire: g(row, 'email_signataire'),
+        score: g(row, 'score'),
+        segments: g(row, 'segments') || g(row, 'typologie'),
+        date_fin_livraison: g(row, 'date_fin_livraison'),
+        volume_total: g(row, 'volume_total'),
+        vendeur_attribue: attr,
+        statut_appel: g(row, 'statut_appel'),
+      });
+    }
+    console.log('📋 Fiches attribuées:', prospects.length);
+    res.json({ success: true, prospects });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

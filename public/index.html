@@ -191,25 +191,48 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
 
       <!-- Section Attribution Premium -->
       <div id="asub-premium" class="card" style="display:none;">
-        <h2 style="color:#1e1b4b;">💎 Attribution Base Premium</h2>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
-          <select id="leadVendeur" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Vendeur cible...</option></select>
-          <select id="leadSeg" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Segment</option><option>C2</option><option>C3</option><option>C4</option><option>C5</option><option>GAZ</option></select>
-          <select id="leadScore" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Score</option><option value="3">&gt;3</option><option value="5">&gt;5</option><option value="7">&gt;7</option><option value="8">&gt;8</option></select>
-          <select id="leadStatut" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Statut</option><option>Tunnel en cours</option><option>Parcours finalisé</option></select>
-          <select id="leadAnnee" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Année fin</option><option>2025</option><option>2026</option><option>2027</option><option>2028</option><option>2029</option></select>
-          <label style="font-size:11px;display:flex;align-items:center;gap:3px;"><input type="checkbox" id="leadHasSign"> Signataire</label>
-          <label style="font-size:11px;display:flex;align-items:center;gap:3px;"><input type="checkbox" id="leadHasEmail"> Email</label>
-          <label style="font-size:11px;display:flex;align-items:center;gap:3px;"><input type="checkbox" id="leadNonAttr" checked> Non attr.</label>
-          <button class="btn btn-sm" onclick="searchLeads(1)">🔍 Rechercher</button>
+        <h2 style="color:#1e1b4b;">💎 Base Premium</h2>
+        <!-- Onglets -->
+        <div style="display:flex;gap:6px;margin-bottom:14px;">
+          <button onclick="showPremiumTab('attribuer')" id="ptab-attribuer" style="padding:8px 18px;border-radius:8px;border:2px solid #7c3aed;background:#7c3aed;color:#fff;font-weight:600;font-size:12px;cursor:pointer;">💎 Attribuer</button>
+          <button onclick="showPremiumTab('attribuees')" id="ptab-attribuees" style="padding:8px 18px;border-radius:8px;border:2px solid #7c3aed;background:#fff;color:#7c3aed;font-weight:600;font-size:12px;cursor:pointer;">📋 Fiches attribuées</button>
         </div>
-        <div id="leadsPagination" style="font-size:12px;color:#6b7280;margin-bottom:6px;"></div>
-        <div id="leadsTable" style="font-size:11px;overflow-x:auto;"></div>
-        <div id="leadsAction" style="display:none;margin-top:10px;">
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-sm" onclick="toggleLeadCb(true)">✅ 20 premiers</button>
-            <button class="btn btn-pink" onclick="attribLeads()" id="btnAttrib" style="flex:1;"></button>
+
+        <!-- Tab Attribuer -->
+        <div id="pview-attribuer">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
+            <select id="leadVendeur" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Vendeur cible...</option></select>
+            <select id="leadSeg" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Segment</option><option>C2</option><option>C3</option><option>C4</option><option>C5</option><option>GAZ</option></select>
+            <select id="leadScore" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Score</option><option value="3">&gt;3</option><option value="5">&gt;5</option><option value="7">&gt;7</option><option value="8">&gt;8</option></select>
+            <select id="leadStatut" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Statut</option><option>Tunnel en cours</option><option>Parcours finalisé</option></select>
+            <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:#6b7280;">
+              <span>Fin:</span>
+              <input type="month" id="dateFinDebut" style="padding:4px 6px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:11px;">
+              <span>→</span>
+              <input type="month" id="dateFinFin" style="padding:4px 6px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:11px;">
+            </div>
+            <label style="font-size:11px;display:flex;align-items:center;gap:3px;"><input type="checkbox" id="leadHasSign"> Signataire</label>
+            <label style="font-size:11px;display:flex;align-items:center;gap:3px;"><input type="checkbox" id="leadHasEmail"> Email</label>
+            <label style="font-size:11px;display:flex;align-items:center;gap:3px;"><input type="checkbox" id="leadNonAttr" checked> Non attr.</label>
+            <button class="btn btn-sm" onclick="searchLeads(1)">🔍 Rechercher</button>
           </div>
+          <div id="leadsPagination" style="font-size:12px;color:#6b7280;margin-bottom:6px;"></div>
+          <div id="leadsTable" style="font-size:11px;overflow-x:auto;"></div>
+          <div id="leadsAction" style="display:none;margin-top:10px;">
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-sm" onclick="toggleLeadCb(true)">✅ 20 premiers</button>
+              <button class="btn btn-pink" onclick="attribLeads()" id="btnAttrib" style="flex:1;"></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab Fiches attribuées -->
+        <div id="pview-attribuees" style="display:none;">
+          <div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;">
+            <select id="attrVendeurFilter" style="padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:12px;"><option value="">Tous les vendeurs</option></select>
+            <button class="btn btn-sm" onclick="loadAttribuees()">🔄 Actualiser</button>
+          </div>
+          <div id="attribueesTable" style="font-size:11px;overflow-x:auto;"><p style="color:#9ca3af;text-align:center;">Cliquez sur 🔄</p></div>
         </div>
       </div>
     </div>
@@ -601,7 +624,8 @@ async function searchLeads(page) {
   params.set('per_page', '50');
   const seg = document.getElementById('leadSeg').value; if (seg) params.set('segment', seg);
   const sc = document.getElementById('leadScore')?.value; if (sc) params.set('score_min', sc);
-  const an = document.getElementById('leadAnnee').value; if (an) params.set('annee_fin', an);
+  const dfd = document.getElementById('dateFinDebut')?.value; if (dfd) params.set('date_fin_debut', dfd);
+  const dff = document.getElementById('dateFinFin')?.value; if (dff) params.set('date_fin_fin', dff);
   const st = document.getElementById('leadStatut').value; if (st) params.set('statut_ohm', st);
   if (document.getElementById('leadHasSign')?.checked) params.set('has_signataire', 'true');
   if (document.getElementById('leadHasEmail')?.checked) params.set('has_email', 'true');
@@ -680,6 +704,50 @@ function updAttribBtn() {
   document.getElementById('btnAttrib').textContent = '✅ Attribuer ' + n + ' leads' + (v ? ' à ' + v.split('@')[0] : '');
 }
 
+function showPremiumTab(name) {
+  ['attribuer','attribuees'].forEach(t => {
+    document.getElementById('pview-'+t).style.display = t===name ? 'block' : 'none';
+    const btn = document.getElementById('ptab-'+t);
+    btn.style.background = t===name ? '#7c3aed' : '#fff';
+    btn.style.color = t===name ? '#fff' : '#7c3aed';
+  });
+  if (name === 'attribuees') loadAttribuees();
+}
+
+async function loadAttribuees() {
+  const div = document.getElementById('attribueesTable');
+  div.innerHTML = '<p style="color:#9ca3af;text-align:center;">Chargement...</p>';
+  const vendeurF = document.getElementById('attrVendeurFilter')?.value || '';
+  try {
+    const params = vendeurF ? '?vendeur='+encodeURIComponent(vendeurF) : '';
+    const r = await fetch('/api/admin/leads-attribues'+params, { headers: { 'Authorization': 'Bearer '+token } });
+    const d = await r.json();
+    const list = d.prospects || [];
+    if (!list.length) { div.innerHTML = '<p style="color:#9ca3af;text-align:center;">Aucune fiche attribuée</p>'; return; }
+    const th = 'padding:4px 6px;text-align:left;font-size:10px;';
+    div.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead style="background:#1e1b4b;color:#fff;"><tr>' +
+      '<th style="'+th+'">Société</th><th style="'+th+'">Signataire</th><th style="'+th+'">Téléphone</th>' +
+      '<th style="'+th+'">Score</th><th style="'+th+'">Segment</th><th style="'+th+'">Fin contrat</th>' +
+      '<th style="'+th+'">Statut</th><th style="'+th+'">Vendeur</th><th style="'+th+'">Action</th>' +
+      '</tr></thead><tbody>' +
+      list.map(p => {
+        const sc = parseInt(p.score||'0');
+        const scBg = sc >= 7 ? '#dcfce7' : sc >= 4 ? '#fef3c7' : '#fef2f2';
+        const scCol = sc >= 7 ? '#166534' : sc >= 4 ? '#92400e' : '#dc2626';
+        return '<tr style="border-bottom:1px solid #f3f0ff;">' +
+          '<td style="padding:4px 6px;font-weight:600;">'+(p.raison_sociale||'—')+'</td>' +
+          '<td style="padding:4px 6px;">'+(p.signataire||'—')+'</td>' +
+          '<td style="padding:4px 6px;">'+(p.tel_signataire||'—')+'</td>' +
+          '<td style="padding:4px 6px;"><span style="background:'+scBg+';color:'+scCol+';padding:1px 6px;border-radius:8px;font-weight:700;font-size:10px;">'+sc+'/10</span></td>' +
+          '<td style="padding:4px 6px;">'+(p.segments||'—')+'</td>' +
+          '<td style="padding:4px 6px;">'+(p.date_fin_livraison||'—')+'</td>' +
+          '<td style="padding:4px 6px;font-size:10px;">'+(p.statut_appel||'—')+'</td>' +
+          '<td style="padding:4px 6px;color:#22c55e;font-weight:600;">'+(p.vendeur_attribue||'').split('@')[0]+'</td>' +
+          '<td style="padding:4px 6px;"><button onclick="retirerLead('+p._row+')" style="background:#fef2f2;color:#dc2626;border:none;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer;font-weight:600;">✖ Retirer</button></td></tr>';
+      }).join('') + '</tbody></table>';
+  } catch(e) { div.innerHTML = '<p style="color:#ef4444;">Erreur</p>'; }
+}
+
 async function retirerLead(row) {
   if (!confirm('Retirer cette fiche de son vendeur ?')) return;
   try {
@@ -687,7 +755,9 @@ async function retirerLead(row) {
       method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ row })
     });
-    searchLeads(_leadsPage);
+    // Refresh les deux vues
+    if (document.getElementById('pview-attribuees').style.display !== 'none') loadAttribuees();
+    else searchLeads(_leadsPage);
   } catch(e) { alert('Erreur: ' + e.message); }
 }
 
