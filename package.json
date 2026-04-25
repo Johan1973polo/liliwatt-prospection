@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && pip3 install -r requirements.txt --break-system-packages || pip install -r requirements.txt || true",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

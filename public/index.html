@@ -1157,12 +1157,15 @@ function openFicheInDrawer(p) {
   document.getElementById('sideDrawer').style.right = '0';
   document.getElementById('drawerOverlay').style.display = 'block';
 }
-function openFicheById(id) {
-  if (!id) return;
-  fetch('/api/prospects/detail/'+id, { headers:{'Authorization':'Bearer '+token} })
-    .then(function(r){ return r.json(); })
-    .then(function(p){ if(p.id) openFicheInDrawer(p); else alert('Fiche introuvable'); })
-    .catch(function(e){ alert('Erreur: '+e.message); });
+async function openFicheById(prospectId) {
+  if (!prospectId) { console.error('openFicheById: id manquant'); return; }
+  try {
+    var res = await fetch('/api/prospects/detail/'+prospectId, { headers:{'Authorization':'Bearer '+token} });
+    if (!res.ok) { alert('Impossible de charger la fiche (HTTP '+res.status+')'); return; }
+    var prospect = await res.json();
+    if (prospect && prospect.id) { openFicheInDrawer(prospect); }
+    else { alert('Fiche introuvable'); }
+  } catch(e) { console.error('openFicheById error:', e); alert('Erreur: '+e.message); }
 }
 function closeSideDrawer() {
   document.getElementById('sideDrawer').style.right = '-520px';
