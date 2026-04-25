@@ -185,7 +185,24 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
         'ne repond pas':'NE_REPOND_PAS','client signe':'CLIENT_SIGNE' };
       where.statutAppel = sm[fStatut] || undefined;
     }
-    if (fSearch) where.raisonSociale = { contains: fSearch, mode: 'insensitive' };
+    // Recherche multi-champs
+    if (fSearch) {
+      const searchOR = [
+        { raisonSociale: { contains: fSearch, mode: 'insensitive' } },
+        { ville: { contains: fSearch, mode: 'insensitive' } },
+        { codePostal: { contains: fSearch } },
+        { telephone: { contains: fSearch } },
+        { secteur: { contains: fSearch, mode: 'insensitive' } },
+      ];
+      if (where.OR) {
+        // Combiner permissions OR + search OR avec AND
+        const permOR = where.OR;
+        delete where.OR;
+        where.AND = [{ OR: permOR }, { OR: searchOR }];
+      } else {
+        where.OR = searchOR;
+      }
+    }
 
     const prospects = await prisma.prospect.findMany({
       where, orderBy: [{ vendeurId: 'desc' }, { createdAt: 'desc' }], take: 200,
