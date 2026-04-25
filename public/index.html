@@ -107,6 +107,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         </select>
         <input type="text" id="fSearch" placeholder="🔍 Rechercher...">
         <button class="btn" onclick="loadBrute()">Rechercher</button>
+        <button class="btn" onclick="openModalFicheManuelle()" style="background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;font-weight:700;">➕ Fiche</button>
       </div>
       <div id="bruteList"></div>
     </div>
@@ -446,9 +447,14 @@ function openConsult(row, sheet) {
 }
 
 async function prendreFromModal() {
-  await fetch('/api/prospects/prendre/'+curRow,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({sheet:curSheet})});
+  const r = await fetch('/api/prospects/prendre/'+curRow,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({sheet:curSheet})});
   closeM('mConsult');
   loadBrute();
+  if (r.ok) {
+    const d = await r.json();
+    if (d.prospect) openFicheInDrawer(d.prospect);
+    else if (_prospectsByRow[curRow]) openFicheInDrawer(_prospectsByRow[curRow]);
+  }
 }
 
 // ===== MODAL STATUT =====
@@ -776,6 +782,109 @@ async function attribLeads() {
   } catch(e) { alert('Erreur réseau'); }
   btn.disabled = false; updAttribBtn();
 }
+
+// ===== PANNEAU LATERAL =====
+function openFicheInDrawer(p) {
+  const st = p.statut_appel || p.statutAppel || '';
+  const stVal = st.replace(/\s/g,'_').toUpperCase();
+  document.getElementById('drawerTitle').innerText = p.raison_sociale || p.raisonSociale || '';
+  document.getElementById('drawerContent').innerHTML =
+    '<div style="margin-bottom:16px;color:#6b7280;font-size:14px;line-height:1.8;">' +
+    (p.adresse||p.adresse||'') + '<br>' +
+    (p.ville||'') + ' ' + (p.codePostal||'') + '<br>' +
+    '<strong style="color:#7c3aed;font-size:16px;">' + (p.telephone||'—') + '</strong><br>' +
+    (p.secteur||'') + (p.isVerrouillee ? ' <span style="color:#dc2626;">🔒</span>' : '') +
+    '</div>' +
+    '<label style="font-size:12px;font-weight:600;color:#6b7280;">Statut</label>' +
+    '<select id="drawerStatut" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:12px;">' +
+    ['A_APPELER','APPELE','INTERESSE','A_RAPPELER','PAS_INTERESSE','FAUX_NUMERO','NE_REPOND_PAS','ATTENTE_DOCUMENTS','DOSSIER_RECU','CLIENT_SIGNE']
+      .map(s => '<option value="'+s+'"'+(stVal===s?' selected':'')+'>'+s.replace(/_/g,' ')+'</option>').join('') +
+    '</select>' +
+    '<label style="font-size:12px;font-weight:600;color:#6b7280;">Notes</label>' +
+    '<textarea id="drawerNotes" rows="4" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:12px;">'+(p.note_appel||p.noteAppel||'')+'</textarea>' +
+    '<label style="font-size:12px;font-weight:600;color:#6b7280;">Date rappel</label>' +
+    '<input type="date" id="drawerDateRappel" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;">';
+  document.getElementById('sideDrawer').dataset.prospectId = p._row || p.id;
+  document.getElementById('sideDrawer').classList.add('open');
+}
+function closeSideDrawer() { document.getElementById('sideDrawer').classList.remove('open'); }
+async function saveDrawerChanges() {
+  const id = document.getElementById('sideDrawer').dataset.prospectId;
+  const statut = document.getElementById('drawerStatut').value;
+  const note = document.getElementById('drawerNotes').value;
+  const rappel = document.getElementById('drawerDateRappel').value;
+  const r = await fetch('/api/prospects/statut/'+id, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify({statut,note,date_rappel:rappel||null}) });
+  if (r.ok) { closeSideDrawer(); loadBrute(); loadKpis(); } else { alert('Erreur'); }
+}
+async function sendRgpdFromDrawer() {
+  const id = document.getElementById('sideDrawer').dataset.prospectId;
+  const email = prompt('Email du destinataire RGPD :');
+  if (!email) return;
+  const r = await fetch('/api/prospects/mail/'+id, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify({email_destinataire:email}) });
+  if (r.ok) { alert('Mail RGPD envoye'); closeSideDrawer(); loadBrute(); } else { const d=await r.json(); alert('Erreur: '+(d.error||'')); }
+}
+
+// ===== FICHE MANUELLE =====
+function openModalFicheManuelle() { document.getElementById('modalFicheManuelle').style.display='flex'; }
+function closeModalFicheManuelle() { document.getElementById('modalFicheManuelle').style.display='none'; document.getElementById('formFicheManuelle').reset(); }
+document.addEventListener('DOMContentLoaded', function() {
+  var form = document.getElementById('formFicheManuelle');
+  if (form) form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var fd = new FormData(e.target);
+    var data = {}; fd.forEach(function(v,k){ data[k]=v; });
+    var r = await fetch('/api/prospects/manuelle', { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify(data) });
+    if (r.ok) { var result = await r.json(); alert('Fiche creee et verrouillee !'); closeModalFicheManuelle(); loadBrute(); if (result.prospect) openFicheInDrawer(result.prospect); }
+    else { var err = await r.json(); alert('Erreur: '+(err.error||'')); }
+  });
+});
 </script>
+
+<!-- PANNEAU LATERAL -->
+<div id="sideDrawer" style="position:fixed;top:0;right:-500px;width:480px;max-width:90vw;height:100vh;background:#fff;box-shadow:-10px 0 30px rgba(0,0,0,.15);transition:right .3s ease;z-index:1000;overflow-y:auto;">
+  <div style="padding:24px;">
+    <button onclick="closeSideDrawer()" style="position:absolute;top:16px;right:16px;background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280;">✕</button>
+    <h2 id="drawerTitle" style="margin:0 0 16px;font-size:20px;font-weight:800;color:#1e1b4b;"></h2>
+    <div id="drawerContent"></div>
+    <div style="display:flex;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb;">
+      <button onclick="saveDrawerChanges()" style="flex:1;padding:12px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;border:none;border-radius:10px;font-weight:600;cursor:pointer;">💾 Enregistrer</button>
+      <button onclick="sendRgpdFromDrawer()" style="flex:1;padding:12px;background:#fff;color:#7c3aed;border:1px solid #7c3aed;border-radius:10px;font-weight:600;cursor:pointer;">✉️ RGPD</button>
+    </div>
+  </div>
+</div>
+<style>#sideDrawer.open{right:0;}</style>
+
+<!-- MODAL FICHE MANUELLE -->
+<div id="modalFicheManuelle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:90%;max-width:500px;max-height:90vh;overflow-y:auto;">
+    <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#1e1b4b;">➕ Nouvelle fiche manuelle</h2>
+    <p style="color:#dc2626;font-size:13px;background:#fee2e2;padding:8px;border-radius:6px;margin-bottom:16px;">🔒 Cette fiche sera <strong>verrouillee a vie</strong> a votre nom.</p>
+    <form id="formFicheManuelle">
+      <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin:10px 0 4px;">Nom entreprise *</label>
+      <input type="text" name="raisonSociale" required style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;box-sizing:border-box;">
+      <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin:10px 0 4px;">Telephone *</label>
+      <input type="tel" name="telephone" required placeholder="06 XX XX XX XX" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;box-sizing:border-box;">
+      <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin:10px 0 4px;">Source * (ex: salon B2B, recommandation...)</label>
+      <input type="text" name="source" required placeholder="Salon, recommandation, etc." style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;box-sizing:border-box;">
+      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;">
+      <p style="color:#6b7280;font-size:12px;margin:0 0 8px;">Champs optionnels :</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div><label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;margin-bottom:3px;">Prenom contact</label><input type="text" name="prenomContact" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;box-sizing:border-box;"></div>
+        <div><label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;margin-bottom:3px;">Nom contact</label><input type="text" name="nomContact" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;box-sizing:border-box;"></div>
+      </div>
+      <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;margin:8px 0 3px;">Email</label>
+      <input type="email" name="email" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;box-sizing:border-box;">
+      <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;margin:8px 0 3px;">Adresse</label>
+      <input type="text" name="adresse" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;box-sizing:border-box;">
+      <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;margin:8px 0 3px;">Notes</label>
+      <textarea name="notes" rows="2" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;box-sizing:border-box;"></textarea>
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button type="button" onclick="closeModalFicheManuelle()" style="flex:1;padding:12px;background:#f3f4f6;border:none;border-radius:8px;cursor:pointer;font-weight:600;">Annuler</button>
+        <button type="submit" style="flex:2;padding:12px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;">🔒 Creer cette fiche</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 </body>
 </html>

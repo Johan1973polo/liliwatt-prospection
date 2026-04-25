@@ -79,7 +79,16 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
     const fSearch = (req.query.search || '').toLowerCase();
 
     const where = { source: { in: ['BRUTE', 'MANUELLE'] } };
-    if (!isAdmin) {
+    if (isAdmin) {
+      // Admin voit tout
+    } else if (req.user.role === 'referent') {
+      // Referent voit ses vendeurs + libres
+      const mesVendeurs = await prisma.user.findMany({ where: { referentId: userId, isActive: true }, select: { id: true } });
+      const ids = mesVendeurs.map(v => v.id);
+      ids.push(userId);
+      where.OR = [{ vendeurId: { in: ids } }, { vendeurId: null }];
+    } else {
+      // Vendeur : ses fiches + libres
       where.OR = [{ vendeurId: userId }, { vendeurId: null }];
     }
     if (fSecteur) where.secteur = { contains: fSecteur, mode: 'insensitive' };
@@ -94,19 +103,23 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
     }
     if (fSearch) where.raisonSociale = { contains: fSearch, mode: 'insensitive' };
 
-    const prospects = await prisma.prospect.findMany({ where, orderBy: [{ vendeurId: 'desc' }, { createdAt: 'desc' }], take: 100 });
+    const prospects = await prisma.prospect.findMany({
+      where, orderBy: [{ vendeurId: 'desc' }, { createdAt: 'desc' }], take: 200,
+      include: { vendeur: { select: { email: true, firstName: true, lastName: true } } }
+    });
 
     const mapped = prospects.map(p => ({
       _row: p.id, id: p.id, place_id: p.placeId,
       raison_sociale: p.raisonSociale, adresse: p.adresse || '', ville: p.ville || '',
       secteur: p.secteur || '', telephone: p.telephone || '', site_web: p.siteWeb || '',
       note_google: p.noteGoogle || '', nb_avis: p.nbAvis || '',
-      vendeur_attribue: p.vendeurId ? req.user.email : '',
+      vendeur_attribue: p.vendeur?.email || '',
       statut_appel: p.statutAppel ? p.statutAppel.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : '',
       note_appel: p.noteAppel || '', date_rappel: p.dateRappel || '',
       rgpd_envoye: p.rgpdEnvoye ? 'oui' : '', email_envoye_a: p.emailEnvoyeA || '',
       date_dernier_appel: p.dateDernierAppel || '',
       _attribue: p.vendeurId === userId || (isAdmin && !!p.vendeurId),
+      isManuelle: p.isManuelle, isVerrouillee: p.isVerrouillee,
     }));
 
     const allBrute = await prisma.prospect.findMany({
@@ -157,11 +170,11 @@ app.post('/api/prospects/prendre/:id', verifyToken, async (req, res) => {
     if (prospect.isVerrouillee) return res.status(403).json({ error: 'Fiche verrouillee' });
     if (prospect.vendeurId && prospect.vendeurId !== userId) return res.status(409).json({ error: 'Fiche deja attribuee' });
 
-    await prisma.prospect.update({ where: { id }, data: { vendeurId: userId, statutAppel: 'A_APPELER' } });
+    const updated = await prisma.prospect.update({ where: { id }, data: { vendeurId: userId, statutAppel: 'A_APPELER' } });
     await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'ATTRIBUTION', metadata: { raisonSociale: prospect.raisonSociale } } });
 
     console.log(`📌 ${prospect.raisonSociale} prise par ${req.user.email}`);
-    res.json({ success: true });
+    res.json({ success: true, prospect: { ...updated, _row: updated.id } });
   } catch(e) { console.error('Prendre error:', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -257,6 +270,35 @@ app.get('/api/kpis', verifyToken, async (req, res) => {
   } catch(e) { console.error('KPIs error:', e); res.status(500).json({ error: e.message }); }
 });
 
+// ===== POST /api/prospects/manuelle (Neon) =====
+app.post('/api/prospects/manuelle', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { raisonSociale, telephone, source: sourceManuelle, nomContact, prenomContact, email, siren, adresse, notes } = req.body;
+    if (!raisonSociale || !telephone || !sourceManuelle) return res.status(400).json({ error: 'raisonSociale, telephone et source obligatoires' });
+
+    let codePostal = null;
+    if (adresse) { const m = adresse.match(/\b(\d{5})\b/); if (m) codePostal = m[1]; }
+    const signataire = [prenomContact, nomContact].filter(Boolean).join(' ').trim() || null;
+
+    const prospect = await prisma.prospect.create({
+      data: {
+        source: 'MANUELLE', raisonSociale: raisonSociale.trim(), telephone: telephone.trim(),
+        email: email?.trim() || null, siren: siren?.trim() || null, adresse: adresse?.trim() || null,
+        codePostal, signataire, sourceManuelle: sourceManuelle.trim(), noteAppel: notes?.trim() || null,
+        vendeurId: userId, statutAppel: 'A_APPELER', isManuelle: true, isVerrouillee: true,
+      }
+    });
+
+    await prisma.activityLog.create({
+      data: { userId, prospectId: prospect.id, type: 'PROSPECT_CREATED_MANUAL', metadata: { raisonSociale, source: sourceManuelle } }
+    });
+
+    console.log(`🔒 Fiche manuelle creee: ${raisonSociale} par ${req.user.email}`);
+    res.json({ success: true, prospect: { ...prospect, _row: prospect.id } });
+  } catch(e) { console.error('Manuelle error:', e); res.status(500).json({ error: e.message }); }
+});
+
 // =============================================================
 // ADMIN ROUTES (Neon)
 // =============================================================
@@ -264,31 +306,28 @@ app.get('/api/kpis', verifyToken, async (req, res) => {
 // ===== GET /api/admin/stats =====
 app.get('/api/admin/stats', verifyToken, isAdminMW, async (req, res) => {
   try {
-    const [totalBrute, totalPremium, totalSigned, attribues, libres, rgpdEnvoyes] = await Promise.all([
-      prisma.prospect.count({ where: { source: 'BRUTE' } }),
-      prisma.prospect.count({ where: { source: 'PREMIUM' } }),
-      prisma.prospect.count({ where: { source: 'PREMIUM_SIGNED' } }),
-      prisma.prospect.count({ where: { vendeurId: { not: null } } }),
-      prisma.prospect.count({ where: { vendeurId: null, source: { in: ['BRUTE', 'PREMIUM'] } } }),
-      prisma.prospect.count({ where: { rgpdEnvoye: true } }),
+    const [total, traitees, libres, hors_pool, signes] = await Promise.all([
+      prisma.prospect.count({ where: { source: { in: ['BRUTE', 'MANUELLE'] } } }),
+      prisma.prospect.count({ where: { source: { in: ['BRUTE', 'MANUELLE'] }, statutAppel: { not: null, notIn: ['A_APPELER'] } } }),
+      prisma.prospect.count({ where: { source: { in: ['BRUTE', 'MANUELLE'] }, vendeurId: null } }),
+      prisma.prospect.count({ where: { source: { in: ['BRUTE', 'MANUELLE'] }, statutAppel: 'FAUX_NUMERO' } }),
+      prisma.prospect.count({ where: { source: { in: ['BRUTE', 'MANUELLE'] }, statutAppel: 'CLIENT_SIGNE' } }),
     ]);
 
-    // Stats par vendeur
     const vendeurs = await prisma.user.findMany({
       where: { role: 'VENDEUR', isActive: true },
-      select: { email: true, firstName: true, lastName: true, _count: { select: { prospectsAttribues: true } } }
+      select: { id: true, email: true, firstName: true, lastName: true }
     });
-    const par_vendeur = vendeurs.map(v => ({
-      email: v.email, nom: `${v.firstName || ''} ${v.lastName || ''}`.trim(),
-      nb_fiches: v._count.prospectsAttribues
+    const par_vendeur = await Promise.all(vendeurs.map(async v => {
+      const [nb_fiches, nb_traitees, nb_signes] = await Promise.all([
+        prisma.prospect.count({ where: { vendeurId: v.id, source: { in: ['BRUTE', 'MANUELLE'] } } }),
+        prisma.prospect.count({ where: { vendeurId: v.id, source: { in: ['BRUTE', 'MANUELLE'] }, statutAppel: { not: null, notIn: ['A_APPELER'] } } }),
+        prisma.prospect.count({ where: { vendeurId: v.id, source: { in: ['BRUTE', 'MANUELLE'] }, statutAppel: 'CLIENT_SIGNE' } }),
+      ]);
+      return { email: v.email, nom: `${v.firstName || ''} ${v.lastName || ''}`.trim(), nb_fiches, nb_traitees, nb_signes };
     }));
 
-    res.json({ success: true, stats: {
-      total: totalBrute + totalPremium + totalSigned,
-      brute: totalBrute, premium: totalPremium, signed: totalSigned,
-      attribues, libres, rgpdEnvoyes, signes: totalSigned,
-      par_vendeur
-    }});
+    res.json({ success: true, stats: { total, traitees, libres, hors_pool, signes, par_vendeur } });
   } catch(e) { console.error('Stats error:', e); res.status(500).json({ error: e.message }); }
 });
 
