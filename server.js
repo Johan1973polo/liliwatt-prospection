@@ -698,12 +698,39 @@ app.post('/api/admin/retirer-lead', verifyToken, isAdminMW, async (req, res) => 
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ===== POST /api/admin/scraper (DESACTIVE — Phase 4) =====
+// ===== POST /api/admin/scraper (Neon) =====
 app.post('/api/admin/scraper', verifyToken, isAdminMW, async (req, res) => {
-  return res.status(503).json({
-    error: 'Module scraper en maintenance',
-    message: 'Le scraper Google Places sera reactive dans la prochaine version.'
-  });
+  try {
+    const { secteur, ville } = req.body;
+    if (!secteur || !ville) return res.status(400).json({ error: 'secteur et ville requis' });
+    const allowed = ['restaurant','hotel','boulangerie','laverie','garage','supermarche','salle_sport','spa','bar','camping','pressing','piscine'];
+    if (!allowed.includes(secteur)) return res.status(400).json({ error: 'Secteur non autorise' });
+    const villeClean = ville.replace(/[^a-zA-Z0-9\u00C0-\u017F\s\-']/g, '').trim();
+    if (!villeClean) return res.status(400).json({ error: 'Ville invalide' });
+
+    const { execSync } = require('child_process');
+    const t0 = Date.now();
+    let output;
+    try {
+      output = execSync(`python3 scraper_neon.py "${secteur}" "${villeClean}"`, {
+        timeout: 180000, env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL, GOOGLE_PLACES_API_KEY: process.env.GOOGLE_PLACES_API_KEY }
+      }).toString();
+    } catch(execErr) {
+      console.error('Scraper exec error:', execErr.message);
+      return res.status(500).json({ error: 'Echec du scraping', detail: execErr.stderr?.toString().substring(0, 500) || execErr.message });
+    }
+
+    const duration = Math.round((Date.now() - t0) / 1000);
+    const match = output.match(/INSERTED:(\d+)\|SKIPPED:(\d+)/);
+    const inserted = match ? parseInt(match[1]) : 0;
+    const skipped = match ? parseInt(match[2]) : 0;
+
+    try { await prisma.activityLog.create({ data: { userId: req.user.id, type: 'PROSPECT_CREATED_MANUAL', metadata: { action: 'scrape', secteur, ville: villeClean, inserted, skipped, durationSec: duration } } }); } catch(e) {}
+
+    console.log(`⚡ Scrape ${secteur}/${villeClean}: ${inserted} ajoutes, ${skipped} doublons, ${duration}s`);
+    res.json({ success: true, secteur, ville: villeClean, inserted, skipped, duration,
+      message: `${inserted} prospect${inserted > 1 ? 's' : ''} ajoute${inserted > 1 ? 's' : ''}, ${skipped} doublon${skipped > 1 ? 's' : ''} en ${duration}s` });
+  } catch(e) { console.error('Scraper error:', e); res.status(500).json({ error: e.message }); }
 });
 
 // ===== STATIC =====

@@ -299,10 +299,10 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
           <div style="font-weight:700;font-size:14px;">Statistiques</div>
           <div style="font-size:11px;opacity:.8;">BASE BRUTE</div>
         </div>
-        <div onclick="alert('Scraper en maintenance — bientot disponible avec import CSV')" id="acard-recharger" style="background:#f3f4f6;color:#9ca3af;border-radius:12px;padding:20px;text-align:center;cursor:not-allowed;border:2px solid #e5e7eb;opacity:0.6;">
-          <div style="font-size:32px;margin-bottom:6px;">🔧</div>
+        <div onclick="showAdminSub('recharger')" id="acard-recharger" style="background:#fff;color:#1e1b4b;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
+          <div style="font-size:32px;margin-bottom:6px;">🔄</div>
           <div style="font-weight:700;font-size:14px;">Recharger</div>
-          <div style="font-size:11px;">Maintenance</div>
+          <div style="font-size:11px;color:#6b7280;">Scrape Google Places</div>
         </div>
         <div onclick="showAdminSub('premium')" id="acard-premium" style="background:#fff;color:#1e1b4b;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
           <div style="font-size:32px;margin-bottom:6px;">💎</div>
@@ -940,12 +940,10 @@ async function lancerScrap() {
     try {
       const r = await fetch('/api/admin/scraper', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ ville, secteur: sec }) });
       const d = await r.json();
-      if (d.deja_fait) {
-        div.innerHTML += '<p style="color:#f59e0b;">⚠️ ' + sec + '/' + ville + ' déjà scrapé le ' + d.date + '</p>';
-      } else if (d.success) {
-        div.innerHTML += '<p style="color:#22c55e;">✅ ' + sec + ' : ' + d.nouveaux + ' ajoutés / ' + d.trouves + ' trouvés</p>';
+      if (d.success) {
+        div.innerHTML += '<p style="color:#22c55e;">✅ ' + sec + ' : ' + (d.inserted||0) + ' ajoutes, ' + (d.skipped||0) + ' doublons (' + (d.duration||0) + 's)</p>';
       } else {
-        div.innerHTML += '<p style="color:#ef4444;">❌ ' + sec + ' : ' + (d.error || 'erreur') + '</p>';
+        div.innerHTML += '<p style="color:#ef4444;">❌ ' + sec + ' : ' + (d.error || 'erreur') + (d.detail ? ' — ' + d.detail : '') + '</p>';
       }
     } catch(e) { div.innerHTML += '<p style="color:#ef4444;">❌ ' + sec + ' : erreur réseau</p>'; }
   }
