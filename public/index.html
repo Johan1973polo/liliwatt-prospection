@@ -166,6 +166,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
   </div>
   <div class="tabs">
     <div class="tab active" onclick="showTab('brute')">📋 Base brute</div>
+    <div class="tab" onclick="showTab('mesfiches')">📂 Mes fiches <span id="mesFichesBadge" style="background:#7c3aed;color:#fff;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;display:none;">0</span></div>
     <div class="tab" onclick="showTab('leads')">💎 Base Premium</div>
     <div class="tab" onclick="showTab('kpis')">📊 Mes KPIs</div>
     <div class="tab" id="tabAdmin" style="display:none;" onclick="showTab('admin')">⚙️ Admin</div>
@@ -193,6 +194,21 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         <button class="btn" onclick="openModalFicheManuelle()" style="background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;font-weight:700;">➕ Fiche</button>
       </div>
       <div id="bruteList"></div>
+    </div>
+
+    <!-- MES FICHES -->
+    <div class="panel" id="tab-mesfiches">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+        <h2 style="margin:0;font-size:24px;font-weight:800;color:#1c1917;">📂 Mes fiches</h2>
+        <div id="mesFichesTotal" style="color:#78716c;font-weight:600;font-size:14px;">0 fiches</div>
+      </div>
+      <div id="mesFichesFiltres" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;"></div>
+      <div style="margin-bottom:20px;">
+        <input type="text" id="mesFichesSearch" placeholder="🔍 Rechercher (nom, ville, telephone)..." style="width:100%;max-width:500px;padding:10px 14px;border:1px solid #e7e5e4;border-radius:10px;font-size:14px;">
+      </div>
+      <div id="mesFichesList" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="text-align:center;color:#9ca3af;padding:40px;">Selectionnez cet onglet pour voir vos fiches</div>
+      </div>
     </div>
 
     <!-- LEADS -->
@@ -487,7 +503,8 @@ function startHeartbeat(){pingHB();if(window._hbInterval)clearInterval(window._h
 function stopHeartbeat(){if(window._hbInterval){clearInterval(window._hbInterval);window._hbInterval=null;}}
 async function pingHB(){if(!token)return;try{await fetch('/api/heartbeat',{method:'POST',headers:{'Authorization':'Bearer '+token}});}catch(e){}}
 
-function showTab(n){document.querySelectorAll('.tab').forEach((t,i)=>{const tabs=['brute','leads','kpis','admin'];t.classList.toggle('active',tabs[i]===n);});document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('tab-'+n).classList.add('active');if(n==='leads')loadLeads();if(n==='kpis')loadKpis();if(n==='admin'&&isAdmin())loadAdminStats();}
+var currentTab='brute';
+function showTab(n){currentTab=n;document.querySelectorAll('.tab').forEach((t,i)=>{const tabs=['brute','mesfiches','leads','kpis','admin'];t.classList.toggle('active',tabs[i]===n);});document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('tab-'+n).classList.add('active');if(n==='mesfiches')loadMesFiches();if(n==='leads')loadLeads();if(n==='kpis')loadKpis();if(n==='admin'&&isAdmin())loadAdminStats();}
 
 // ===== BASE BRUTE =====
 async function loadBrute(){
@@ -788,6 +805,62 @@ document.addEventListener('DOMContentLoaded',function(){
   });
 });
 
+// ===== MES FICHES =====
+let currentMesFichesStatut='tous',currentMesFichesSearch='';
+async function loadMesFiches(){
+  try{
+    var params=new URLSearchParams();
+    if(currentMesFichesStatut&&currentMesFichesStatut!=='tous')params.set('statut',currentMesFichesStatut);
+    if(currentMesFichesSearch)params.set('search',currentMesFichesSearch);
+    params.set('limit','100');
+    var r=await fetch('/api/prospects/mes-fiches?'+params,{headers:{'Authorization':'Bearer '+token}});
+    var d=await r.json();
+    renderMesFichesFiltres(d.statusCounts,d.total);
+    renderMesFichesList(d.prospects);
+    updateMesFichesBadge(d.total);
+  }catch(e){console.error('loadMesFiches error:',e);}
+}
+function updateMesFichesBadge(total){
+  var b=document.getElementById('mesFichesBadge');
+  if(b){b.innerText=total;b.style.display=total>0?'inline-block':'none';}
+  var t=document.getElementById('mesFichesTotal');
+  if(t)t.innerText=total+' fiche'+(total>1?'s':'');
+}
+function renderMesFichesFiltres(counts,total){
+  var filtres=[
+    {key:'tous',label:'Toutes',count:total},
+    {key:'A_APPELER',label:'📞 A appeler',count:counts.A_APPELER||0},
+    {key:'A_RAPPELER',label:'🔄 A rappeler',count:counts.A_RAPPELER||0},
+    {key:'INTERESSE',label:'🟢 Interesse',count:counts.INTERESSE||0},
+    {key:'ATTENTE_DOCUMENTS',label:'📄 Attente docs',count:counts.ATTENTE_DOCUMENTS||0},
+    {key:'DOSSIER_RECU',label:'✅ Dossier recu',count:counts.DOSSIER_RECU||0},
+    {key:'CLIENT_SIGNE',label:'🏆 Signe',count:counts.CLIENT_SIGNE||0},
+    {key:'PAS_INTERESSE',label:'❌ Pas interesse',count:counts.PAS_INTERESSE||0},
+    {key:'NE_REPOND_PAS',label:'📵 NRP',count:counts.NE_REPOND_PAS||0}
+  ];
+  document.getElementById('mesFichesFiltres').innerHTML=filtres.filter(function(f){return f.count>0||f.key==='tous';}).map(function(f){
+    var act=currentMesFichesStatut===f.key;
+    return '<button onclick="setMesFichesStatut(\''+f.key+'\')" style="padding:8px 14px;background:'+(act?'#1c1917':'#fff')+';color:'+(act?'#fff':'#44403c')+';border:1px solid #e7e5e4;border-radius:99px;cursor:pointer;font-weight:600;font-size:13px;">'+f.label+' <span style="opacity:0.6;">('+f.count+')</span></button>';
+  }).join('');
+}
+function setMesFichesStatut(s){currentMesFichesStatut=s;loadMesFiches();}
+function renderMesFichesList(prospects){
+  if(!prospects.length){document.getElementById('mesFichesList').innerHTML='<div style="text-align:center;color:#9ca3af;padding:60px 20px;"><div style="font-size:48px;margin-bottom:12px;">📭</div><div style="font-weight:600;color:#44403c;">Aucune fiche</div><div style="font-size:13px;margin-top:4px;">Va dans Base brute pour t\'attribuer des prospects</div></div>';return;}
+  var stl={A_APPELER:{l:'A appeler',bg:'#ede9fe',c:'#5b21b6'},A_RAPPELER:{l:'A rappeler',bg:'#fef3c7',c:'#b45309'},INTERESSE:{l:'Interesse',bg:'#d1fae5',c:'#065f46'},ATTENTE_DOCUMENTS:{l:'Attente docs',bg:'#dbeafe',c:'#1e40af'},DOSSIER_RECU:{l:'Dossier recu',bg:'#d1fae5',c:'#10b981'},PAS_INTERESSE:{l:'Pas interesse',bg:'#f5f5f4',c:'#78716c'},NE_REPOND_PAS:{l:'NRP',bg:'#f5f5f4',c:'#78716c'},FAUX_NUMERO:{l:'Faux numero',bg:'#fee2e2',c:'#991b1b'},CLIENT_SIGNE:{l:'Signe 🏆',bg:'#bbf7d0',c:'#14532d'},APPELE:{l:'Appele',bg:'#ede9fe',c:'#7c3aed'}};
+  document.getElementById('mesFichesList').innerHTML=prospects.map(function(p){
+    var st=stl[p.statutAppel]||{l:'—',bg:'#f5f5f4',c:'#78716c'};
+    var dr=p.dateRappel?'<span style="color:#b45309;font-weight:600;font-size:12px;">📅 Rappel: '+new Date(p.dateRappel).toLocaleDateString('fr-FR')+'</span>':'';
+    var sb=p.source==='MANUELLE'?'<span style="background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;">🔒 MANUELLE</span>':(p.source==='PREMIUM'?'<span style="background:#fae8ff;color:#a21caf;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;">💎 PREMIUM</span>':'');
+    return '<div onclick="openFicheInDrawer(_mesFichesMap[\''+p.id+'\'])" style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px 20px;cursor:pointer;transition:all .15s;display:flex;justify-content:space-between;align-items:center;gap:16px;" onmouseover="this.style.borderColor=\'#7c3aed\';this.style.boxShadow=\'0 4px 12px rgba(124,58,237,.12)\'" onmouseout="this.style.borderColor=\'#e7e5e4\';this.style.boxShadow=\'none\'"><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><strong style="font-size:15px;color:#1c1917;">'+((p.raisonSociale||'—'))+'</strong>'+sb+'</div><div style="color:#78716c;font-size:13px;">'+(p.ville||'')+' '+(p.codePostal?'· '+p.codePostal:'')+(p.telephone?' · 📞 '+p.telephone:'')+'</div>'+dr+'</div><span style="background:'+st.bg+';color:'+st.c+';padding:6px 12px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap;">'+st.l+'</span></div>';
+  }).join('');
+  // Store map for drawer
+  window._mesFichesMap={};prospects.forEach(function(p){window._mesFichesMap[p.id]=p;});
+}
+document.addEventListener('DOMContentLoaded',function(){
+  var s=document.getElementById('mesFichesSearch');
+  if(s)s.addEventListener('input',function(e){clearTimeout(window._mfSearchTimer);window._mfSearchTimer=setTimeout(function(){currentMesFichesSearch=e.target.value;loadMesFiches();},300);});
+});
+
 // ===== ADMIN =====
 function showAdminSub(name) {
   ['stats','recharger','premium'].forEach(s => {
@@ -1084,7 +1157,7 @@ async function saveDrawerChanges() {
   const note = document.getElementById('drawerNotes').value;
   const rappel = document.getElementById('drawerDateRappel').value;
   const r = await fetch('/api/prospects/statut/'+id, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify({statut,note,date_rappel:rappel||null}) });
-  if (r.ok) { closeSideDrawer(); loadBrute(); loadKpis(); } else { alert('Erreur'); }
+  if (r.ok) { closeSideDrawer(); loadBrute(); loadKpis(); fetch('/api/prospects/mes-fiches?limit=1',{headers:{'Authorization':'Bearer '+token}}).then(function(r){return r.json();}).then(function(d){updateMesFichesBadge(d.total);}).catch(function(){}); } else { alert('Erreur'); }
 }
 async function sendRgpdFromDrawer() {
   const id = document.getElementById('sideDrawer').dataset.prospectId;

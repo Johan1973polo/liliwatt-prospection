@@ -78,6 +78,32 @@ app.post('/api/heartbeat', verifyToken, async (req, res) => {
   } catch(e) { res.status(500).json({ error: 'Heartbeat failed' }); }
 });
 
+// ===== GET /api/prospects/mes-fiches =====
+app.get('/api/prospects/mes-fiches', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { statut, search, page = 1, limit = 100 } = req.query;
+    const where = { vendeurId: userId };
+    if (statut && statut !== 'tous') where.statutAppel = statut;
+    if (search) {
+      where.OR = [
+        { raisonSociale: { contains: search, mode: 'insensitive' } },
+        { ville: { contains: search, mode: 'insensitive' } },
+        { telephone: { contains: search } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [prospects, total, statsByStatus] = await Promise.all([
+      prisma.prospect.findMany({ where, orderBy: [{ dateRappel: 'asc' }, { updatedAt: 'desc' }], skip, take: parseInt(limit) }),
+      prisma.prospect.count({ where }),
+      prisma.prospect.groupBy({ by: ['statutAppel'], where: { vendeurId: userId }, _count: true }),
+    ]);
+    const statusCounts = statsByStatus.reduce((a, s) => { a[s.statutAppel || 'NULL'] = s._count; return a; }, {});
+    res.json({ prospects, total, page: parseInt(page), limit: parseInt(limit), statusCounts });
+  } catch(e) { console.error('Mes-fiches error:', e); res.status(500).json({ error: e.message }); }
+});
+
 // ===== GET /api/prospects/brute (Neon) =====
 app.get('/api/prospects/brute', verifyToken, async (req, res) => {
   try {
