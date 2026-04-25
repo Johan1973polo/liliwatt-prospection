@@ -20,5 +20,8 @@
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^8.0.5",
     "prisma": "^5.22.0"
+  },
+  "devDependencies": {
+    "csv-parse": "^6.2.1"
   }
 }
