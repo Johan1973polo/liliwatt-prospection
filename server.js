@@ -37,7 +37,6 @@ app.post('/api/auth/login', async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
-      include: { credentials: { where: { serviceName: 'RGPD' }, select: { login: true } } }
     });
 
     if (!user || !user.isActive) return res.status(401).json({ error: 'Identifiants invalides' });
@@ -48,9 +47,12 @@ app.post('/api/auth/login', async (req, res) => {
 
     await prisma.user.update({ where: { id: user.id }, data: { lastSeen: new Date() } });
 
+    // Charger le token RGPD separement
+    const rgpdCred = await prisma.credential.findFirst({ where: { userId: user.id, serviceName: 'RGPD' }, select: { login: true } });
+
     const isAdm = user.role === 'ADMIN' || user.email === 'johan.mallet@liliwatt.fr' || user.email === 'kevin.moreau@liliwatt.fr';
     const role = isAdm ? 'admin' : (user.role === 'REFERENT' ? 'referent' : 'vendeur');
-    const tokenRgpd = user.credentials[0]?.login || '';
+    const tokenRgpd = rgpdCred?.login || '';
 
     const token = jwt.sign({
       id: user.id, email: user.email,
@@ -222,12 +224,12 @@ app.post('/api/prospects/mail/:id', verifyToken, async (req, res) => {
     const { email_destinataire, nom_gerant } = req.body;
     if (!email_destinataire) return res.status(400).json({ error: 'Email requis' });
 
-    const vendeurUser = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      include: { credentials: { where: { serviceName: 'ZOHO' }, select: { login: true, passwordEncrypted: true } } }
+    const zohoCred = await prisma.credential.findFirst({
+      where: { userId: req.user.id, serviceName: 'ZOHO' },
+      select: { login: true, passwordEncrypted: true }
     });
-    const zohoLogin = vendeurUser?.credentials[0]?.login || req.user.email;
-    const zohoPass = vendeurUser?.credentials[0]?.passwordEncrypted || '';
+    const zohoLogin = zohoCred?.login || req.user.email;
+    const zohoPass = zohoCred?.passwordEncrypted || '';
     if (!zohoPass) return res.status(400).json({ error: 'Credentials Zoho non configurees' });
 
     const rgpdLink = `https://liliwatt-courtier.onrender.com/rgpd/${req.user.token_rgpd}`;
