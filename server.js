@@ -70,6 +70,14 @@ app.post('/api/auth/login', async (req, res) => {
   } catch(e) { console.error('Login error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// ===== POST /api/heartbeat =====
+app.post('/api/heartbeat', verifyToken, async (req, res) => {
+  try {
+    await prisma.user.update({ where: { id: req.user.id }, data: { lastSeen: new Date() } });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: 'Heartbeat failed' }); }
+});
+
 // ===== GET /api/prospects/brute (Neon) =====
 app.get('/api/prospects/brute', verifyToken, async (req, res) => {
   try {

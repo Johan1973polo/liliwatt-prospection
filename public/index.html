@@ -233,7 +233,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
             <div class="kpi-progress-label"><span id="kpiAppelsPercent">0%</span><span id="kpiAppelsRemaining" class="kpi-mono">120 restants</span></div>
           </div>
           <div class="kpi-hero-card"><div class="kpi-label-up">✉️ RGPD envoyes</div><div class="kpi-secondary-value" id="kpiRgpdValue">0</div><div class="kpi-meta" id="kpiRgpdMeta">aucun encore</div></div>
-          <div class="kpi-hero-card"><div class="kpi-label-up">⏱️ Temps actif</div><div class="kpi-secondary-value" id="kpiTempsValue">0h00</div><div class="kpi-meta" id="kpiTempsMeta">objectif 5h</div></div>
+          <div class="kpi-hero-card" style="opacity:0.6;"><div class="kpi-label-up">⏱️ Temps actif</div><div class="kpi-secondary-value" id="kpiTempsValue" style="font-size:22px;color:#a8a29e;">A venir</div><div class="kpi-meta" id="kpiTempsMeta" style="font-size:11px;">Tracking en preparation</div></div>
         </div>
         <div class="kpi-section-title">Mes ratios commerciaux</div>
         <div class="kpi-ratios-grid" id="kpiRatios"></div>
@@ -471,7 +471,7 @@ function isAdmin(){return user && (user.role==='admin'||user.email==='johan.mall
 if (token && user && user.role) { showApp(); } else if (token) { console.log('User cache obsolete, deconnexion forcee'); localStorage.removeItem('p_token'); localStorage.removeItem('p_user'); token=null; user=null; showLogin(); } else { showLogin(); }
 
 function showLogin(){document.getElementById('loginPage').classList.remove('hidden');document.getElementById('appPage').classList.add('hidden');}
-function showApp(){document.getElementById('loginPage').classList.add('hidden');document.getElementById('appPage').classList.remove('hidden');document.getElementById('uName').textContent=user.prenom||user.nom;var r=user.role||'vendeur';document.getElementById('uRole').textContent=isAdmin()?'Admin':(r==='referent'?'Referent':'Vendeur');document.getElementById('tabAdmin').style.display=isAdmin()?'block':'none';if(r==='admin'||r==='referent'){document.getElementById('kpiViewToggle').style.display='block';currentKpiView='team';}else{document.getElementById('kpiViewToggle').style.display='none';currentKpiView='me';}loadBrute();loadKpis();}
+function showApp(){document.getElementById('loginPage').classList.add('hidden');document.getElementById('appPage').classList.remove('hidden');document.getElementById('uName').textContent=user.prenom||user.nom;var r=user.role||'vendeur';document.getElementById('uRole').textContent=isAdmin()?'Admin':(r==='referent'?'Referent':'Vendeur');document.getElementById('tabAdmin').style.display=isAdmin()?'block':'none';if(r==='admin'||r==='referent'){document.getElementById('kpiViewToggle').style.display='block';currentKpiView='team';}else{document.getElementById('kpiViewToggle').style.display='none';currentKpiView='me';}startHeartbeat();loadBrute();loadKpis();}
 
 async function doLogin(){
   const e=document.getElementById('lEmail').value,p=document.getElementById('lPwd').value,err=document.getElementById('lErr');
@@ -479,7 +479,11 @@ async function doLogin(){
   if(d.success){token=d.token;user=d.user;localStorage.setItem('p_token',token);localStorage.setItem('p_user',JSON.stringify(user));showApp();}
   else{err.style.display='block';err.textContent='❌ '+d.error;}}catch(x){err.style.display='block';err.textContent='Erreur réseau';}
 }
-function logout(){localStorage.removeItem('p_token');localStorage.removeItem('p_user');token=null;user=null;showLogin();}
+function logout(){stopHeartbeat();localStorage.removeItem('p_token');localStorage.removeItem('p_user');token=null;user=null;showLogin();}
+// Heartbeat
+function startHeartbeat(){pingHB();if(window._hbInterval)clearInterval(window._hbInterval);window._hbInterval=setInterval(pingHB,10000);}
+function stopHeartbeat(){if(window._hbInterval){clearInterval(window._hbInterval);window._hbInterval=null;}}
+async function pingHB(){if(!token)return;try{await fetch('/api/heartbeat',{method:'POST',headers:{'Authorization':'Bearer '+token}});}catch(e){}}
 
 function showTab(n){document.querySelectorAll('.tab').forEach((t,i)=>{const tabs=['brute','leads','kpis','admin'];t.classList.toggle('active',tabs[i]===n);});document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('tab-'+n).classList.add('active');if(n==='leads')loadLeads();if(n==='kpis')loadKpis();if(n==='admin'&&isAdmin())loadAdminStats();}
 
@@ -699,10 +703,10 @@ function renderTeamLeaderboard(lb){
   document.getElementById('teamLeaderboard').innerHTML=lb.map(function(v,i){
     var rank=i+1,rc=rank===1?'top-1':rank===2?'top-2':rank===3?'top-3':'';
     var init=((v.firstName||'')[0]||'')+((v.lastName||'')[0]||'');
-    var th=Math.floor(v.tempsActifMinutes/60)+'h'+String(v.tempsActifMinutes%60).padStart(2,'0');
+    var stLabel=v.status==='online'?'🟢 En ligne':(v.status==='warning'?'🟡 Sous-perf':'Hors ligne');
     return '<div class="leader-row '+rc+'">'+
       '<div class="leader-rank">'+rank+'</div>'+
-      '<div class="leader-info"><div class="leader-avatar">'+init+'</div><div><div class="leader-name">'+(v.firstName||'')+' '+(v.lastName||'')+'</div><div class="leader-role">'+th+' actif</div></div></div>'+
+      '<div class="leader-info"><div class="leader-avatar">'+init+'</div><div><div class="leader-name">'+(v.firstName||'')+' '+(v.lastName||'')+'</div><div class="leader-role">'+stLabel+'</div></div></div>'+
       '<div class="leader-stat"><div class="leader-stat-num">'+v.appels+'</div><div class="leader-stat-label">appels</div></div>'+
       '<div class="leader-stat"><div class="leader-stat-num">'+v.rgpd+'</div><div class="leader-stat-label">RGPD</div></div>'+
       '<div class="leader-stat"><div class="leader-stat-num" style="color:'+(v.adhesion.color==='fire'?'#ea580c':v.adhesion.color==='green'?'#10b981':v.adhesion.color==='amber'?'#f59e0b':'#ef4444')+'">'+v.adhesion.value+'%</div><div class="leader-stat-label">adhesion</div></div>'+
@@ -721,9 +725,9 @@ function renderKpiHero(k){
   document.getElementById('kpiAppelsRemaining').innerText=rem+' restants';
   document.getElementById('kpiRgpdValue').innerText=k.counters.rgpd;
   document.getElementById('kpiRgpdMeta').innerText=k.counters.rgpd>0?(pl[k.period]||'').toLowerCase():'aucun encore';
-  var min=k.counters.tempsActifMinutes,h=Math.floor(min/60),m=min%60;
-  document.getElementById('kpiTempsValue').innerText=h+'h'+String(m).padStart(2,'0');
-  document.getElementById('kpiTempsMeta').innerText=min>=300?'🟢 Jour vert atteint !':'objectif 5h';
+  // Temps actif masque (Phase 5C2)
+  document.getElementById('kpiTempsValue').innerText='A venir';
+  document.getElementById('kpiTempsMeta').innerText='Tracking en preparation';
 }
 function renderKpiRatios(k){
   var r=k.ratios,c=k.counters;
