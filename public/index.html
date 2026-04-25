@@ -454,6 +454,8 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
 let token = localStorage.getItem('p_token');
 let user = JSON.parse(localStorage.getItem('p_user') || 'null');
 let curRow = null, curSheet = 'BASE BRUTE';
+let currentKpiPeriod = 'today';
+let currentKpiView = 'auto';
 
 const SECTEURS_FR = {
   'bakery':'Boulangerie / Pâtisserie','restaurant':'Restaurant','lodging':'Hôtel / Hébergement',
@@ -648,8 +650,6 @@ async function sendMail(){
 function closeM(id){document.getElementById(id).style.display='none';}
 
 // ===== KPIs =====
-let currentKpiPeriod='today';
-let currentKpiView='auto';
 async function loadKpis(period){
   currentKpiPeriod=period||currentKpiPeriod||'today';
   if(currentKpiView==='auto') currentKpiView=(user&&(user.role==='admin'||user.role==='referent'))?'team':'me';
