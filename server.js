@@ -78,6 +78,48 @@ app.post('/api/heartbeat', verifyToken, async (req, res) => {
   } catch(e) { res.status(500).json({ error: 'Heartbeat failed' }); }
 });
 
+// ===== GET /api/prospects/:id =====
+app.get('/api/prospects/detail/:id', verifyToken, async (req, res) => {
+  try {
+    const p = await prisma.prospect.findUnique({ where: { id: req.params.id }, include: { vendeur: { select: { id: true, firstName: true, lastName: true, email: true } } } });
+    if (!p) return res.status(404).json({ error: 'Fiche introuvable' });
+    const isVendeur = req.user.role === 'vendeur';
+    if (isVendeur && p.vendeurId && p.vendeurId !== req.user.id) return res.status(403).json({ error: 'Pas autorise' });
+    res.json(p);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== PUT /api/prospects/:id =====
+app.put('/api/prospects/:id', verifyToken, async (req, res) => {
+  try {
+    const existing = await prisma.prospect.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Fiche introuvable' });
+    const isVendeur = req.user.role === 'vendeur';
+    if (isVendeur && existing.vendeurId !== req.user.id) return res.status(403).json({ error: 'Pas autorise' });
+
+    const allowed = ['raisonSociale','signataire','telephone','email','adresse','ville','codePostal','siteWeb','siren','secteur','noteAppel','statutAppel','dateRappel'];
+    const data = {};
+    for (const f of allowed) { if (req.body[f] !== undefined) data[f] = req.body[f] || null; }
+    if (data.dateRappel) data.dateRappel = new Date(data.dateRappel);
+    data.dateDernierAppel = new Date();
+
+    // Regles metier statut
+    if (data.statutAppel && data.statutAppel !== existing.statutAppel) {
+      if (data.statutAppel === 'PAS_INTERESSE' && !existing.isVerrouillee) data.vendeurId = null;
+      if (data.statutAppel === 'FAUX_NUMERO') { data.vendeurId = null; data.telephone = null; }
+      // ActivityLog
+      const callStatuts = ['APPELE','INTERESSE','PAS_INTERESSE','NE_REPOND_PAS','A_RAPPELER','FAUX_NUMERO','ATTENTE_DOCUMENTS','DOSSIER_RECU','CLIENT_SIGNE'];
+      if (callStatuts.includes(data.statutAppel)) {
+        await prisma.activityLog.create({ data: { userId: req.user.id, prospectId: req.params.id, type: 'CALL', metadata: { resultat: data.statutAppel } } });
+      }
+      await prisma.activityLog.create({ data: { userId: req.user.id, prospectId: req.params.id, type: 'STATUS_CHANGE', metadata: { from: existing.statutAppel, to: data.statutAppel } } });
+    }
+
+    const updated = await prisma.prospect.update({ where: { id: req.params.id }, data });
+    res.json(updated);
+  } catch(e) { console.error('PUT prospect error:', e); res.status(500).json({ error: e.message }); }
+});
+
 // ===== GET /api/prospects/mes-fiches =====
 app.get('/api/prospects/mes-fiches', verifyToken, async (req, res) => {
   try {

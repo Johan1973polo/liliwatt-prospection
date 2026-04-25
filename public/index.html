@@ -851,7 +851,7 @@ function renderMesFichesList(prospects){
     var st=stl[p.statutAppel]||{l:'—',bg:'#f5f5f4',c:'#78716c'};
     var dr=p.dateRappel?'<span style="color:#b45309;font-weight:600;font-size:12px;">📅 Rappel: '+new Date(p.dateRappel).toLocaleDateString('fr-FR')+'</span>':'';
     var sb=p.source==='MANUELLE'?'<span style="background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;">🔒 MANUELLE</span>':(p.source==='PREMIUM'?'<span style="background:#fae8ff;color:#a21caf;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;">💎 PREMIUM</span>':'');
-    return '<div onclick="openFicheInDrawer(_mesFichesMap[\''+p.id+'\'])" style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px 20px;cursor:pointer;transition:all .15s;display:flex;justify-content:space-between;align-items:center;gap:16px;" onmouseover="this.style.borderColor=\'#7c3aed\';this.style.boxShadow=\'0 4px 12px rgba(124,58,237,.12)\'" onmouseout="this.style.borderColor=\'#e7e5e4\';this.style.boxShadow=\'none\'"><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><strong style="font-size:15px;color:#1c1917;">'+((p.raisonSociale||'—'))+'</strong>'+sb+'</div><div style="color:#78716c;font-size:13px;">'+(p.ville||'')+' '+(p.codePostal?'· '+p.codePostal:'')+(p.telephone?' · 📞 '+p.telephone:'')+'</div>'+dr+'</div><span style="background:'+st.bg+';color:'+st.c+';padding:6px 12px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap;">'+st.l+'</span></div>';
+    return '<div onclick="openFicheById(\''+p.id+'\')" style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px 20px;cursor:pointer;transition:all .15s;display:flex;justify-content:space-between;align-items:center;gap:16px;" onmouseover="this.style.borderColor=\'#7c3aed\';this.style.boxShadow=\'0 4px 12px rgba(124,58,237,.12)\'" onmouseout="this.style.borderColor=\'#e7e5e4\';this.style.boxShadow=\'none\'"><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><strong style="font-size:15px;color:#1c1917;">'+((p.raisonSociale||'—'))+'</strong>'+sb+'</div><div style="color:#78716c;font-size:13px;">'+(p.ville||'')+' '+(p.codePostal?'· '+p.codePostal:'')+(p.telephone?' · 📞 '+p.telephone:'')+'</div>'+dr+'</div><span style="background:'+st.bg+';color:'+st.c+';padding:6px 12px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap;">'+st.l+'</span></div>';
   }).join('');
   // Store map for drawer
   window._mesFichesMap={};prospects.forEach(function(p){window._mesFichesMap[p.id]=p;});
@@ -1125,44 +1125,92 @@ async function attribLeads() {
 }
 
 // ===== PANNEAU LATERAL =====
+var _currentDrawerId = null;
 function openFicheInDrawer(p) {
-  const st = p.statut_appel || p.statutAppel || '';
-  const stVal = st.replace(/\s/g,'_').toUpperCase();
-  document.getElementById('drawerTitle').innerText = p.raison_sociale || p.raisonSociale || '';
-  document.getElementById('drawerContent').innerHTML =
-    '<div style="margin-bottom:16px;color:#6b7280;font-size:14px;line-height:1.8;">' +
-    (p.adresse||p.adresse||'') + '<br>' +
-    (p.ville||'') + ' ' + (p.codePostal||'') + '<br>' +
-    '<strong style="color:#7c3aed;font-size:16px;">' + (p.telephone||'—') + '</strong><br>' +
-    (p.secteur||'') + (p.isVerrouillee ? ' <span style="color:#dc2626;">🔒</span>' : '') +
-    '</div>' +
-    '<label style="font-size:12px;font-weight:600;color:#6b7280;">Statut</label>' +
-    '<select id="drawerStatut" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:12px;">' +
-    ['A_APPELER','APPELE','INTERESSE','A_RAPPELER','PAS_INTERESSE','FAUX_NUMERO','NE_REPOND_PAS','ATTENTE_DOCUMENTS','DOSSIER_RECU','CLIENT_SIGNE']
-      .map(s => '<option value="'+s+'"'+(stVal===s?' selected':'')+'>'+s.replace(/_/g,' ')+'</option>').join('') +
-    '</select>' +
-    '<label style="font-size:12px;font-weight:600;color:#6b7280;">Notes</label>' +
-    '<textarea id="drawerNotes" rows="4" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:12px;">'+(p.note_appel||p.noteAppel||'')+'</textarea>' +
-    '<label style="font-size:12px;font-weight:600;color:#6b7280;">Date rappel</label>' +
-    '<input type="date" id="drawerDateRappel" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;">';
-  document.getElementById('sideDrawer').dataset.prospectId = p._row || p.id;
-  document.getElementById('sideDrawer').classList.add('open');
+  if (!p) return;
+  _currentDrawerId = p._row || p.id;
+  document.getElementById('drawerTitle').innerText = p.raison_sociale || p.raisonSociale || '(Sans nom)';
+  document.getElementById('drawerSubtitle').innerText = (p.ville||'') + (p.codePostal ? ' · ' + p.codePostal : '');
+  // Action commerciale
+  var st = (p.statut_appel || p.statutAppel || 'A_APPELER').replace(/\s/g,'_').toUpperCase();
+  document.getElementById('drawerStatut').value = st;
+  document.getElementById('drawerDateRappel').value = p.dateRappel ? new Date(p.dateRappel).toISOString().slice(0,10) : (p.date_rappel || '');
+  document.getElementById('drawerNotes').value = p.note_appel || p.noteAppel || '';
+  // RGPD
+  var rgpd = p.rgpdEnvoye || p.rgpd_envoye === 'oui';
+  document.getElementById('drawerRgpdStatus').innerText = rgpd ? '✅ RGPD deja envoye' : 'Pas encore envoye';
+  document.getElementById('drawerRgpdStatus').style.color = rgpd ? '#10b981' : '#78716c';
+  document.getElementById('drawerRgpdBtn').innerText = rgpd ? '📧 Renvoyer le mandat' : '📧 Envoyer le mandat RGPD';
+  // Infos prospect
+  document.getElementById('drawerRaisonSociale').value = p.raison_sociale || p.raisonSociale || '';
+  document.getElementById('drawerSignataire').value = p.signataire || '';
+  document.getElementById('drawerTelephone').value = p.telephone || p.tel_signataire || '';
+  document.getElementById('drawerEmail').value = p.email || p.email_signataire || '';
+  document.getElementById('drawerAdresse').value = p.adresse || '';
+  document.getElementById('drawerCodePostal').value = p.codePostal || '';
+  document.getElementById('drawerVille').value = p.ville || '';
+  document.getElementById('drawerSiren').value = p.siren || '';
+  // Meta
+  var srcLabels = {BRUTE:'📋 Base brute',PREMIUM:'💎 Premium',PREMIUM_SIGNED:'🏆 Premium signe',MANUELLE:'🔒 Manuelle'};
+  document.getElementById('drawerMeta').innerHTML = 'Source : ' + (srcLabels[p.source] || p.source || '—') + (p.createdAt ? '<br>Ajoutee le ' + new Date(p.createdAt).toLocaleDateString('fr-FR') : '');
+  // Open
+  document.getElementById('sideDrawer').style.right = '0';
+  document.getElementById('drawerOverlay').style.display = 'block';
 }
-function closeSideDrawer() { document.getElementById('sideDrawer').classList.remove('open'); }
+function openFicheById(id) {
+  if (!id) return;
+  fetch('/api/prospects/detail/'+id, { headers:{'Authorization':'Bearer '+token} })
+    .then(function(r){ return r.json(); })
+    .then(function(p){ if(p.id) openFicheInDrawer(p); else alert('Fiche introuvable'); })
+    .catch(function(e){ alert('Erreur: '+e.message); });
+}
+function closeSideDrawer() {
+  document.getElementById('sideDrawer').style.right = '-520px';
+  document.getElementById('drawerOverlay').style.display = 'none';
+  _currentDrawerId = null;
+}
 async function saveDrawerChanges() {
-  const id = document.getElementById('sideDrawer').dataset.prospectId;
-  const statut = document.getElementById('drawerStatut').value;
-  const note = document.getElementById('drawerNotes').value;
-  const rappel = document.getElementById('drawerDateRappel').value;
-  const r = await fetch('/api/prospects/statut/'+id, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify({statut,note,date_rappel:rappel||null}) });
-  if (r.ok) { closeSideDrawer(); loadBrute(); loadKpis(); fetch('/api/prospects/mes-fiches?limit=1',{headers:{'Authorization':'Bearer '+token}}).then(function(r){return r.json();}).then(function(d){updateMesFichesBadge(d.total);}).catch(function(){}); } else { alert('Erreur'); }
+  if (!_currentDrawerId) return;
+  var btn = document.getElementById('drawerSaveBtn');
+  btn.disabled = true; btn.innerText = '⏳ Enregistrement...';
+  try {
+    var payload = {
+      statutAppel: document.getElementById('drawerStatut').value || null,
+      dateRappel: document.getElementById('drawerDateRappel').value || null,
+      noteAppel: document.getElementById('drawerNotes').value || null,
+      raisonSociale: document.getElementById('drawerRaisonSociale').value || null,
+      signataire: document.getElementById('drawerSignataire').value || null,
+      telephone: document.getElementById('drawerTelephone').value || null,
+      email: document.getElementById('drawerEmail').value || null,
+      adresse: document.getElementById('drawerAdresse').value || null,
+      codePostal: document.getElementById('drawerCodePostal').value || null,
+      ville: document.getElementById('drawerVille').value || null,
+      siren: document.getElementById('drawerSiren').value || null,
+    };
+    var r = await fetch('/api/prospects/'+_currentDrawerId, { method:'PUT', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify(payload) });
+    if (r.ok) {
+      btn.innerText = '✅ Enregistre !'; btn.style.background = '#10b981';
+      setTimeout(function(){ btn.innerText = '💾 Enregistrer tous les changements'; btn.style.background = 'linear-gradient(135deg,#7c3aed,#d946ef)'; btn.disabled = false; }, 1500);
+      if (currentTab === 'mesfiches' && typeof loadMesFiches === 'function') loadMesFiches();
+      if (currentTab === 'brute') loadBrute();
+      loadKpis();
+      fetch('/api/prospects/mes-fiches?limit=1',{headers:{'Authorization':'Bearer '+token}}).then(function(x){return x.json();}).then(function(d){updateMesFichesBadge(d.total);}).catch(function(){});
+    } else { var d = await r.json(); alert('Erreur: '+(d.error||'')); btn.disabled = false; btn.innerText = '💾 Enregistrer tous les changements'; }
+  } catch(e) { alert('Erreur: '+e.message); btn.disabled = false; btn.innerText = '💾 Enregistrer tous les changements'; }
 }
 async function sendRgpdFromDrawer() {
-  const id = document.getElementById('sideDrawer').dataset.prospectId;
-  const email = prompt('Email du destinataire RGPD :');
+  if (!_currentDrawerId) return;
+  var email = prompt('Email du destinataire RGPD :');
   if (!email) return;
-  const r = await fetch('/api/prospects/mail/'+id, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify({email_destinataire:email}) });
-  if (r.ok) { alert('Mail RGPD envoye'); closeSideDrawer(); loadBrute(); } else { const d=await r.json(); alert('Erreur: '+(d.error||'')); }
+  var btn = document.getElementById('drawerRgpdBtn'); btn.disabled = true; btn.innerText = '⏳ Envoi...';
+  try {
+    var r = await fetch('/api/prospects/mail/'+_currentDrawerId, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify({email_destinataire:email}) });
+    if (r.ok) {
+      btn.innerText = '✅ Envoye !'; btn.style.background = '#10b981';
+      document.getElementById('drawerRgpdStatus').innerText = '✅ RGPD envoye'; document.getElementById('drawerRgpdStatus').style.color = '#10b981';
+      setTimeout(function(){ btn.innerText = '📧 Renvoyer le mandat'; btn.style.background = '#a8a29e'; btn.disabled = false; }, 2000);
+    } else { var d = await r.json(); alert('Erreur: '+(d.error||'')); btn.disabled = false; btn.innerText = '📧 Envoyer le mandat RGPD'; }
+  } catch(e) { alert('Erreur: '+e.message); btn.disabled = false; btn.innerText = '📧 Envoyer le mandat RGPD'; }
 }
 
 // ===== FICHE MANUELLE =====
@@ -1181,19 +1229,62 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<!-- PANNEAU LATERAL -->
-<div id="sideDrawer" style="position:fixed;top:0;right:-500px;width:480px;max-width:90vw;height:100vh;background:#fff;box-shadow:-10px 0 30px rgba(0,0,0,.15);transition:right .3s ease;z-index:1000;overflow-y:auto;">
-  <div style="padding:24px;">
-    <button onclick="closeSideDrawer()" style="position:absolute;top:16px;right:16px;background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280;">✕</button>
-    <h2 id="drawerTitle" style="margin:0 0 16px;font-size:20px;font-weight:800;color:#1e1b4b;"></h2>
-    <div id="drawerContent"></div>
-    <div style="display:flex;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb;">
-      <button onclick="saveDrawerChanges()" style="flex:1;padding:12px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;border:none;border-radius:10px;font-weight:600;cursor:pointer;">💾 Enregistrer</button>
-      <button onclick="sendRgpdFromDrawer()" style="flex:1;padding:12px;background:#fff;color:#7c3aed;border:1px solid #7c3aed;border-radius:10px;font-weight:600;cursor:pointer;">✉️ RGPD</button>
+<!-- PANNEAU LATERAL UNIVERSEL -->
+<div id="drawerOverlay" onclick="closeSideDrawer()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1499;"></div>
+<div id="sideDrawer" style="position:fixed;top:0;right:-520px;width:520px;max-width:95vw;height:100vh;background:#fff;box-shadow:-4px 0 20px rgba(0,0,0,.1);transition:right .3s ease;z-index:1500;overflow-y:auto;">
+  <div style="padding:24px;border-bottom:1px solid #e7e5e4;position:sticky;top:0;background:#fff;z-index:10;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <div style="flex:1;"><h2 id="drawerTitle" style="margin:0;font-size:20px;color:#1c1917;">Fiche</h2><div id="drawerSubtitle" style="color:#78716c;font-size:13px;margin-top:4px;"></div></div>
+      <button onclick="closeSideDrawer()" style="background:#f5f5f4;border:none;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:18px;">✕</button>
     </div>
   </div>
+  <div style="padding:24px;">
+    <!-- ACTION COMMERCIALE -->
+    <div style="margin-bottom:24px;">
+      <div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7c3aed;margin-bottom:14px;display:flex;align-items:center;gap:10px;"><span style="width:14px;height:2px;background:#7c3aed;border-radius:99px;"></span>Action commerciale</div>
+      <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Statut</label>
+      <select id="drawerStatut" style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;margin-bottom:14px;font-size:14px;">
+        <option value="A_APPELER">📞 A appeler</option><option value="APPELE">✅ Appele</option><option value="A_RAPPELER">🔄 A rappeler</option>
+        <option value="INTERESSE">🟢 Interesse</option><option value="ATTENTE_DOCUMENTS">📄 Attente documents</option><option value="DOSSIER_RECU">📦 Dossier recu</option>
+        <option value="CLIENT_SIGNE">🏆 Client signe</option><option value="PAS_INTERESSE">❌ Pas interesse</option><option value="NE_REPOND_PAS">📵 Ne repond pas</option><option value="FAUX_NUMERO">🚫 Faux numero</option>
+      </select>
+      <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">📅 Date de rappel</label>
+      <input type="date" id="drawerDateRappel" style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;margin-bottom:14px;font-size:14px;">
+      <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">📝 Notes d'appel</label>
+      <textarea id="drawerNotes" rows="3" placeholder="Ce qu'il s'est dit..." style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;margin-bottom:14px;"></textarea>
+    </div>
+    <!-- RGPD -->
+    <div style="margin-bottom:24px;padding:16px;background:#fae8ff;border-radius:12px;">
+      <div style="font-weight:700;font-size:13px;color:#7c3aed;margin-bottom:8px;">✉️ Mandat RGPD</div>
+      <div id="drawerRgpdStatus" style="color:#78716c;font-size:13px;margin-bottom:12px;">Pas encore envoye</div>
+      <button onclick="sendRgpdFromDrawer()" id="drawerRgpdBtn" style="width:100%;padding:10px;background:#a21caf;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">📧 Envoyer le mandat RGPD</button>
+    </div>
+    <!-- INFOS PROSPECT EDITABLES -->
+    <div style="margin-bottom:24px;">
+      <div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7c3aed;margin-bottom:14px;display:flex;align-items:center;gap:10px;"><span style="width:14px;height:2px;background:#7c3aed;border-radius:99px;"></span>Infos prospect <span style="margin-left:auto;font-size:10px;color:#78716c;text-transform:none;letter-spacing:normal;font-weight:500;">(modifiable)</span></div>
+      <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Raison sociale</label>
+      <input type="text" id="drawerRaisonSociale" style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;margin-bottom:12px;font-size:14px;box-sizing:border-box;">
+      <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Signataire / contact</label>
+      <input type="text" id="drawerSignataire" style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;margin-bottom:12px;font-size:14px;box-sizing:border-box;">
+      <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">📞 Telephone</label>
+      <input type="tel" id="drawerTelephone" style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;margin-bottom:12px;font-size:14px;box-sizing:border-box;">
+      <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">✉️ Email</label>
+      <input type="email" id="drawerEmail" style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;margin-bottom:12px;font-size:14px;box-sizing:border-box;">
+      <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Adresse</label>
+      <input type="text" id="drawerAdresse" style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;margin-bottom:12px;font-size:14px;box-sizing:border-box;">
+      <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:12px;">
+        <div><label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">CP</label><input type="text" id="drawerCodePostal" maxlength="5" style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;font-size:14px;box-sizing:border-box;"></div>
+        <div><label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Ville</label><input type="text" id="drawerVille" style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;font-size:14px;box-sizing:border-box;"></div>
+      </div>
+      <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">SIREN</label>
+      <input type="text" id="drawerSiren" maxlength="9" style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;margin-bottom:14px;font-size:14px;box-sizing:border-box;">
+    </div>
+    <!-- SAVE ALL -->
+    <button onclick="saveDrawerChanges()" id="drawerSaveBtn" style="width:100%;padding:14px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;margin-bottom:14px;">💾 Enregistrer tous les changements</button>
+    <!-- META -->
+    <div id="drawerMeta" style="padding:14px;background:#fafaf9;border-radius:10px;font-size:12px;color:#78716c;"></div>
+  </div>
 </div>
-<style>#sideDrawer.open{right:0;}</style>
 
 <!-- MODAL FICHE MANUELLE -->
 <div id="modalFicheManuelle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:center;justify-content:center;">
