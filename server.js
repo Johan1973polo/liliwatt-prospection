@@ -402,6 +402,74 @@ app.get('/api/kpis/me/funnel', verifyToken, async (req, res) => {
   } catch(e) { console.error('Funnel error:', e); res.status(500).json({ error: e.message }); }
 });
 
+// ===== GET /api/kpis/team (referent + admin) =====
+app.get('/api/kpis/team', verifyToken, async (req, res) => {
+  try {
+    const { id: userId, role } = req.user;
+    const period = req.query.period || 'today';
+    const dateFilter = getDateRange(period);
+    if (role === 'vendeur') return res.status(403).json({ error: 'Reserve aux referents et admins' });
+
+    let vendeurIds = [], teamLabel = '';
+    if (role === 'admin') {
+      const all = await prisma.user.findMany({ where: { role: 'VENDEUR', isActive: true }, select: { id: true } });
+      vendeurIds = all.map(v => v.id); teamLabel = 'LILIWATT global';
+    } else {
+      const sousRefs = await prisma.user.findMany({ where: { referentId: userId, role: 'REFERENT', isActive: true }, select: { id: true } });
+      const sousRefIds = sousRefs.map(r => r.id);
+      const mesV = await prisma.user.findMany({
+        where: { role: 'VENDEUR', isActive: true, OR: [{ referentId: userId }, ...(sousRefIds.length ? [{ referentId: { in: sousRefIds } }] : [])] },
+        select: { id: true }
+      });
+      vendeurIds = mesV.map(v => v.id); teamLabel = 'Mon equipe';
+    }
+
+    if (!vendeurIds.length) return res.json({ teamLabel, period, vendeurCount: 0, counters: { appels: 0, rgpd: 0, factures: 0, ventes: 0, fichesPrises: 0 }, ratios: { adhesion: { value: 0, color: 'red' }, retourFacture: { value: 0, color: 'red' }, closing: { value: 0, color: 'red' } }, leaderboard: [] });
+
+    const actW = dateFilter ? { userId: { in: vendeurIds }, timestamp: dateFilter } : { userId: { in: vendeurIds } };
+    const [appels, rgpd, factures, ventes, fiches] = await Promise.all([
+      prisma.activityLog.count({ where: { ...actW, type: 'CALL' } }),
+      prisma.activityLog.count({ where: { ...actW, type: 'RGPD_SENT' } }),
+      prisma.activityLog.count({ where: { ...actW, type: 'INVOICE_RECEIVED' } }),
+      prisma.activityLog.count({ where: { ...actW, type: 'SALE_SIGNED' } }),
+      prisma.activityLog.count({ where: { ...actW, type: 'ATTRIBUTION' } }),
+    ]);
+
+    const adhesion = appels > 0 ? Math.round((rgpd / appels) * 1000) / 10 : 0;
+    const retour = rgpd > 0 ? Math.round((factures / rgpd) * 1000) / 10 : 0;
+    const closing = factures > 0 ? Math.round((ventes / factures) * 1000) / 10 : 0;
+    function col(v, t) { const th = t === 'adhesion' ? [30,15,5] : [30,20,10]; return v >= th[0] ? 'fire' : v >= th[1] ? 'green' : v >= th[2] ? 'amber' : 'red'; }
+
+    const leaderboard = await Promise.all(vendeurIds.map(async vid => {
+      const [u, vA, vR, vV, vT] = await Promise.all([
+        prisma.user.findUnique({ where: { id: vid }, select: { id: true, firstName: true, lastName: true, email: true, lastSeen: true } }),
+        prisma.activityLog.count({ where: { userId: vid, type: 'CALL', ...(dateFilter && { timestamp: dateFilter }) } }),
+        prisma.activityLog.count({ where: { userId: vid, type: 'RGPD_SENT', ...(dateFilter && { timestamp: dateFilter }) } }),
+        prisma.activityLog.count({ where: { userId: vid, type: 'SALE_SIGNED', ...(dateFilter && { timestamp: dateFilter }) } }),
+        prisma.workSession.aggregate({ where: { userId: vid, ...(dateFilter && { startedAt: dateFilter }) }, _sum: { durationMinutes: true } }),
+      ]);
+      const adh = vA > 0 ? Math.round((vR / vA) * 1000) / 10 : 0;
+      const isOnline = u.lastSeen && (Date.now() - new Date(u.lastSeen).getTime()) < 5 * 60 * 1000;
+      return {
+        id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email,
+        appels: vA, rgpd: vR, ventes: vV,
+        adhesion: { value: adh, color: col(adh, 'adhesion') },
+        tempsActifMinutes: vT._sum.durationMinutes || 0,
+        status: isOnline ? 'online' : 'offline',
+      };
+    }));
+    leaderboard.sort((a, b) => b.appels - a.appels);
+
+    res.json({
+      teamLabel, period, vendeurCount: vendeurIds.length,
+      objectives: { appelsCible: 120 * vendeurIds.length, tempsCible: 300 },
+      counters: { appels, rgpd, factures, ventes, fichesPrises: fiches },
+      ratios: { adhesion: { value: adhesion, color: col(adhesion, 'adhesion') }, retourFacture: { value: retour, color: col(retour, 'retour') }, closing: { value: closing, color: col(closing, 'closing') } },
+      leaderboard,
+    });
+  } catch(e) { console.error('Team KPIs error:', e); res.status(500).json({ error: e.message }); }
+});
+
 // ===== POST /api/prospects/manuelle (Neon) =====
 app.post('/api/prospects/manuelle', verifyToken, async (req, res) => {
   try {

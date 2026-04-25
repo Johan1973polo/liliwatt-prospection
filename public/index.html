@@ -124,6 +124,20 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
 .kpi-pipeline-num{font-weight:800;font-size:22px;color:#1c1917;letter-spacing:-.02em}
 .kpi-pipeline-signed .kpi-pipeline-label,.kpi-pipeline-signed .kpi-pipeline-num{color:#166534}
 @media(max-width:900px){.kpi-hero-row,.kpi-ratios-grid,.kpi-funnel,.kpi-history-section{grid-template-columns:1fr}.kpi-funnel-step::after{display:none}.kpi-title{font-size:24px}.kpi-hero-value{font-size:56px}}
+/* Leaderboard */
+.leader-row{display:grid;grid-template-columns:40px 1fr auto auto auto auto;align-items:center;gap:14px;padding:14px 16px;background:#fafaf9;border-radius:14px;border:1px solid transparent;margin-bottom:8px;transition:all .15s}
+.leader-row:hover{background:#fff;border-color:#e7e5e4;box-shadow:0 4px 12px rgba(28,25,23,.06)}
+.leader-rank{font-size:22px;font-weight:800;color:#d6d3d1;text-align:center;letter-spacing:-.04em}
+.leader-row.top-1 .leader-rank{color:#f59e0b}.leader-row.top-2 .leader-rank{color:#94a3b8}.leader-row.top-3 .leader-rank{color:#b45309}
+.leader-info{display:flex;align-items:center;gap:12px}
+.leader-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.leader-name{font-weight:700;font-size:14px;color:#1c1917}.leader-role{font-size:11px;color:#78716c;font-weight:500;margin-top:1px}
+.leader-stat{text-align:center;min-width:70px}.leader-stat-num{font-size:16px;font-weight:700;color:#1c1917;font-family:monospace}
+.leader-stat-label{font-size:10px;color:#78716c;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;font-weight:600}
+.leader-status{width:8px;height:8px;border-radius:50%}.status-online{background:#10b981;box-shadow:0 0 8px rgba(16,185,129,.5)}.status-offline{background:#d6d3d1}.status-warning{background:#f59e0b}
+.kpi-view-btn{padding:8px 16px;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;transition:all .15s}
+.kpi-view-btn.active{background:#1c1917!important;color:#fff!important}.kpi-view-btn:not(.active){background:transparent!important;color:#78716c!important}
+@media(max-width:900px){.leader-row{grid-template-columns:30px 1fr auto auto}}
 </style>
 </head>
 <body>
@@ -192,50 +206,70 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
 
     <!-- KPIs -->
     <div class="panel" id="tab-kpis">
-      <div class="kpi-header">
-        <div>
-          <h1 class="kpi-title">Mes performances</h1>
-          <div class="kpi-subtitle" id="kpiSubtitle">Chargement...</div>
-        </div>
-        <div class="time-filter" id="kpiTimeFilter">
-          <button class="time-btn active" data-period="today">Aujourd'hui</button>
-          <button class="time-btn" data-period="week">Semaine</button>
-          <button class="time-btn" data-period="month">Mois</button>
-          <button class="time-btn" data-period="all">Tout</button>
+      <!-- TOGGLE equipe/perso (referent+admin only) -->
+      <div id="kpiViewToggle" style="margin-bottom:20px;display:none;">
+        <div style="display:inline-flex;background:#fff;border:1px solid #e7e5e4;border-radius:12px;padding:4px;">
+          <button class="kpi-view-btn active" data-view="team">👥 Mon equipe</button>
+          <button class="kpi-view-btn" data-view="me">👤 Mes perfs perso</button>
         </div>
       </div>
-      <div class="kpi-hero-row">
-        <div class="kpi-hero-card kpi-hero-primary">
-          <div class="kpi-label-up">Appels passes</div>
-          <div class="kpi-hero-value"><span class="kpi-num" id="kpiAppelsValue">0</span><span class="kpi-target" id="kpiAppelsTarget">/ 120</span></div>
-          <div class="kpi-progress-bar"><div class="kpi-progress-fill" id="kpiAppelsProgress" style="width:0%"></div></div>
-          <div class="kpi-progress-label"><span id="kpiAppelsPercent">0%</span><span id="kpiAppelsRemaining" class="kpi-mono">120 restants</span></div>
+
+      <!-- VUE VENDEUR (perso) -->
+      <div id="kpiViewVendeur">
+        <div class="kpi-header">
+          <div><h1 class="kpi-title">Mes performances</h1><div class="kpi-subtitle" id="kpiSubtitle">Chargement...</div></div>
+          <div class="time-filter" id="kpiTimeFilter">
+            <button class="time-btn active" data-period="today">Aujourd'hui</button>
+            <button class="time-btn" data-period="week">Semaine</button>
+            <button class="time-btn" data-period="month">Mois</button>
+            <button class="time-btn" data-period="all">Tout</button>
+          </div>
         </div>
-        <div class="kpi-hero-card">
-          <div class="kpi-label-up">✉️ RGPD envoyes</div>
-          <div class="kpi-secondary-value" id="kpiRgpdValue">0</div>
-          <div class="kpi-meta" id="kpiRgpdMeta">aucun encore</div>
+        <div class="kpi-hero-row">
+          <div class="kpi-hero-card kpi-hero-primary">
+            <div class="kpi-label-up">Appels passes</div>
+            <div class="kpi-hero-value"><span class="kpi-num" id="kpiAppelsValue">0</span><span class="kpi-target" id="kpiAppelsTarget">/ 120</span></div>
+            <div class="kpi-progress-bar"><div class="kpi-progress-fill" id="kpiAppelsProgress" style="width:0%"></div></div>
+            <div class="kpi-progress-label"><span id="kpiAppelsPercent">0%</span><span id="kpiAppelsRemaining" class="kpi-mono">120 restants</span></div>
+          </div>
+          <div class="kpi-hero-card"><div class="kpi-label-up">✉️ RGPD envoyes</div><div class="kpi-secondary-value" id="kpiRgpdValue">0</div><div class="kpi-meta" id="kpiRgpdMeta">aucun encore</div></div>
+          <div class="kpi-hero-card"><div class="kpi-label-up">⏱️ Temps actif</div><div class="kpi-secondary-value" id="kpiTempsValue">0h00</div><div class="kpi-meta" id="kpiTempsMeta">objectif 5h</div></div>
         </div>
-        <div class="kpi-hero-card">
-          <div class="kpi-label-up">⏱️ Temps actif</div>
-          <div class="kpi-secondary-value" id="kpiTempsValue">0h00</div>
-          <div class="kpi-meta" id="kpiTempsMeta">objectif 5h</div>
+        <div class="kpi-section-title">Mes ratios commerciaux</div>
+        <div class="kpi-ratios-grid" id="kpiRatios"></div>
+        <div class="kpi-funnel-section"><div class="kpi-section-title" style="margin-top:0;">Mon entonnoir de conversion</div><div class="kpi-funnel" id="kpiFunnel"></div></div>
+        <div class="kpi-history-section">
+          <div class="kpi-history-card"><div class="kpi-section-title" style="margin-top:0;">Activite recente</div><div class="kpi-history-list" id="kpiActivity"><div style="color:#9ca3af;padding:20px;text-align:center;">Chargement...</div></div></div>
+          <div class="kpi-pipeline-card"><div class="kpi-section-title" style="margin-top:0;">Mon pipeline</div><div id="kpiPipeline"></div></div>
         </div>
       </div>
-      <div class="kpi-section-title">Mes ratios commerciaux</div>
-      <div class="kpi-ratios-grid" id="kpiRatios"></div>
-      <div class="kpi-funnel-section">
-        <div class="kpi-section-title" style="margin-top:0;">Mon entonnoir de conversion</div>
-        <div class="kpi-funnel" id="kpiFunnel"></div>
-      </div>
-      <div class="kpi-history-section">
-        <div class="kpi-history-card">
-          <div class="kpi-section-title" style="margin-top:0;">Activite recente</div>
-          <div class="kpi-history-list" id="kpiActivity"><div style="color:#9ca3af;padding:20px;text-align:center;">Chargement...</div></div>
+
+      <!-- VUE EQUIPE (referent+admin) -->
+      <div id="kpiViewTeam" style="display:none;">
+        <div class="kpi-header">
+          <div><h1 class="kpi-title">Performances equipe</h1><div class="kpi-subtitle" id="teamSubtitle">Chargement...</div></div>
+          <div class="time-filter" id="kpiTimeFilterTeam">
+            <button class="time-btn active" data-period="today">Aujourd'hui</button>
+            <button class="time-btn" data-period="week">Semaine</button>
+            <button class="time-btn" data-period="month">Mois</button>
+            <button class="time-btn" data-period="all">Tout</button>
+          </div>
         </div>
-        <div class="kpi-pipeline-card">
-          <div class="kpi-section-title" style="margin-top:0;">Mon pipeline</div>
-          <div id="kpiPipeline"></div>
+        <div class="kpi-hero-row">
+          <div class="kpi-hero-card kpi-hero-primary">
+            <div class="kpi-label-up">Appels equipe</div>
+            <div class="kpi-hero-value"><span class="kpi-num" id="teamAppelsValue">0</span><span class="kpi-target" id="teamAppelsTarget">/ 0</span></div>
+            <div class="kpi-progress-bar"><div class="kpi-progress-fill" id="teamAppelsProgress" style="width:0%"></div></div>
+            <div class="kpi-progress-label"><span id="teamAppelsPercent">0%</span><span id="teamAppelsRemaining" class="kpi-mono">moy. 0/vendeur</span></div>
+          </div>
+          <div class="kpi-hero-card"><div class="kpi-label-up">✉️ RGPD equipe</div><div class="kpi-secondary-value" id="teamRgpdValue">0</div><div class="kpi-meta">total periode</div></div>
+          <div class="kpi-hero-card"><div class="kpi-label-up">📄 Factures recues</div><div class="kpi-secondary-value" id="teamFacturesValue">0</div><div class="kpi-meta">total periode</div></div>
+        </div>
+        <div class="kpi-section-title">Ratios equipe</div>
+        <div class="kpi-ratios-grid" id="teamRatios"></div>
+        <div class="kpi-section-title">Classement vendeurs</div>
+        <div style="background:#fff;border:1px solid #e7e5e4;border-radius:20px;padding:24px;">
+          <div id="teamLeaderboard"><div style="color:#9ca3af;padding:30px;text-align:center;">Chargement...</div></div>
         </div>
       </div>
     </div>
@@ -437,7 +471,7 @@ function isAdmin(){return user && (user.role==='admin'||user.email==='johan.mall
 if (token && user) showApp(); else showLogin();
 
 function showLogin(){document.getElementById('loginPage').classList.remove('hidden');document.getElementById('appPage').classList.add('hidden');}
-function showApp(){document.getElementById('loginPage').classList.add('hidden');document.getElementById('appPage').classList.remove('hidden');document.getElementById('uName').textContent=user.prenom||user.nom;document.getElementById('uRole').textContent=isAdmin()?'Admin':'Vendeur';document.getElementById('tabAdmin').style.display=isAdmin()?'block':'none';loadBrute();loadKpis();}
+function showApp(){document.getElementById('loginPage').classList.add('hidden');document.getElementById('appPage').classList.remove('hidden');document.getElementById('uName').textContent=user.prenom||user.nom;var r=user.role||'vendeur';document.getElementById('uRole').textContent=isAdmin()?'Admin':(r==='referent'?'Referent':'Vendeur');document.getElementById('tabAdmin').style.display=isAdmin()?'block':'none';if(r==='admin'||r==='referent'){document.getElementById('kpiViewToggle').style.display='block';currentKpiView='team';}else{document.getElementById('kpiViewToggle').style.display='none';currentKpiView='me';}loadBrute();loadKpis();}
 
 async function doLogin(){
   const e=document.getElementById('lEmail').value,p=document.getElementById('lPwd').value,err=document.getElementById('lErr');
@@ -611,9 +645,17 @@ function closeM(id){document.getElementById(id).style.display='none';}
 
 // ===== KPIs =====
 let currentKpiPeriod='today';
+let currentKpiView='auto';
 async function loadKpis(period){
   currentKpiPeriod=period||currentKpiPeriod||'today';
+  if(currentKpiView==='auto') currentKpiView=(user&&(user.role==='admin'||user.role==='referent'))?'team':'me';
+  if(currentKpiView==='team') return loadTeamKpis();
+  return loadMyKpis();
+}
+async function loadMyKpis(){
   try{
+    document.getElementById('kpiViewVendeur').style.display='block';
+    document.getElementById('kpiViewTeam').style.display='none';
     const [kR,aR,fR]=await Promise.all([
       fetch('/api/kpis/me?period='+currentKpiPeriod,{headers:{'Authorization':'Bearer '+token}}),
       fetch('/api/kpis/me/activity?limit=10',{headers:{'Authorization':'Bearer '+token}}),
@@ -621,7 +663,52 @@ async function loadKpis(period){
     ]);
     const kpis=await kR.json(),activity=await aR.json(),funnel=await fR.json();
     renderKpiHero(kpis);renderKpiRatios(kpis);renderKpiFunnel(funnel);renderKpiActivity(activity.items);renderKpiPipeline(kpis.pipeline);
-  }catch(e){console.error('loadKpis error:',e);}
+  }catch(e){console.error('loadMyKpis error:',e);}
+}
+async function loadTeamKpis(){
+  try{
+    document.getElementById('kpiViewVendeur').style.display='none';
+    document.getElementById('kpiViewTeam').style.display='block';
+    const r=await fetch('/api/kpis/team?period='+currentKpiPeriod,{headers:{'Authorization':'Bearer '+token}});
+    const d=await r.json();
+    renderTeamHero(d);renderTeamRatios(d);renderTeamLeaderboard(d.leaderboard);
+  }catch(e){console.error('loadTeamKpis error:',e);}
+}
+function renderTeamHero(d){
+  var pl={'today':"Aujourd'hui",'week':'Cette semaine','month':'Ce mois','all':'Depuis le debut'};
+  document.getElementById('teamSubtitle').innerText=(d.teamLabel||'')+' · '+d.vendeurCount+' vendeur'+(d.vendeurCount>1?'s':'')+' · '+(pl[d.period]||'');
+  var a=d.counters.appels,c=d.objectives.appelsCible||1,pct=Math.min(100,Math.round((a/c)*100));
+  document.getElementById('teamAppelsValue').innerText=a.toLocaleString('fr-FR');
+  document.getElementById('teamAppelsTarget').innerText='/ '+c.toLocaleString('fr-FR');
+  document.getElementById('teamAppelsProgress').style.width=pct+'%';
+  document.getElementById('teamAppelsPercent').innerText=pct+'%';
+  var moy=d.vendeurCount>0?Math.round(a/d.vendeurCount):0;
+  document.getElementById('teamAppelsRemaining').innerText='moy. '+moy+' appels/vendeur';
+  document.getElementById('teamRgpdValue').innerText=d.counters.rgpd;
+  document.getElementById('teamFacturesValue').innerText=d.counters.factures;
+}
+function renderTeamRatios(d){
+  var r=d.ratios,c=d.counters;
+  document.getElementById('teamRatios').innerHTML=
+    '<div class="kpi-ratio-card kpi-'+r.adhesion.color+'"><div class="kpi-ratio-name">Adhesion equipe</div><div class="kpi-ratio-formula">RGPD ÷ Appels</div><div class="kpi-ratio-value">'+r.adhesion.value+'%</div><div class="kpi-ratio-stats"><span><strong>'+c.rgpd+'</strong> RGPD</span><span><strong>'+c.appels+'</strong> appels</span></div></div>'+
+    '<div class="kpi-ratio-card kpi-'+r.retourFacture.color+'"><div class="kpi-ratio-name">Retour facture</div><div class="kpi-ratio-formula">Factures ÷ RGPD</div><div class="kpi-ratio-value">'+r.retourFacture.value+'%</div><div class="kpi-ratio-stats"><span><strong>'+c.factures+'</strong> factures</span><span><strong>'+c.rgpd+'</strong> RGPD</span></div></div>'+
+    '<div class="kpi-ratio-card kpi-'+r.closing.color+'"><div class="kpi-ratio-name">Closing</div><div class="kpi-ratio-formula">Ventes ÷ Factures</div><div class="kpi-ratio-value">'+r.closing.value+'%</div><div class="kpi-ratio-stats"><span><strong>'+c.ventes+'</strong> ventes</span><span><strong>'+c.factures+'</strong> factures</span></div></div>';
+}
+function renderTeamLeaderboard(lb){
+  if(!lb||!lb.length){document.getElementById('teamLeaderboard').innerHTML='<div style="color:#9ca3af;padding:30px;text-align:center;">Aucun vendeur</div>';return;}
+  document.getElementById('teamLeaderboard').innerHTML=lb.map(function(v,i){
+    var rank=i+1,rc=rank===1?'top-1':rank===2?'top-2':rank===3?'top-3':'';
+    var init=((v.firstName||'')[0]||'')+((v.lastName||'')[0]||'');
+    var th=Math.floor(v.tempsActifMinutes/60)+'h'+String(v.tempsActifMinutes%60).padStart(2,'0');
+    return '<div class="leader-row '+rc+'">'+
+      '<div class="leader-rank">'+rank+'</div>'+
+      '<div class="leader-info"><div class="leader-avatar">'+init+'</div><div><div class="leader-name">'+(v.firstName||'')+' '+(v.lastName||'')+'</div><div class="leader-role">'+th+' actif</div></div></div>'+
+      '<div class="leader-stat"><div class="leader-stat-num">'+v.appels+'</div><div class="leader-stat-label">appels</div></div>'+
+      '<div class="leader-stat"><div class="leader-stat-num">'+v.rgpd+'</div><div class="leader-stat-label">RGPD</div></div>'+
+      '<div class="leader-stat"><div class="leader-stat-num" style="color:'+(v.adhesion.color==='fire'?'#ea580c':v.adhesion.color==='green'?'#10b981':v.adhesion.color==='amber'?'#f59e0b':'#ef4444')+'">'+v.adhesion.value+'%</div><div class="leader-stat-label">adhesion</div></div>'+
+      '<div class="leader-status status-'+v.status+'"></div>'+
+    '</div>';
+  }).join('');
 }
 function renderKpiHero(k){
   var pl={'today':"Aujourd'hui",'week':'Cette semaine','month':'Ce mois','all':'Depuis le debut'};
@@ -672,13 +759,27 @@ function renderKpiPipeline(p){
     '<div class="kpi-pipeline-item kpi-pipeline-signed"><div class="kpi-pipeline-label">🏆 Signes</div><div class="kpi-pipeline-num">'+p.clientSigne+'</div></div>'+
     '</div>';
 }
-// Filtre temporel
+// Filtres temporels + toggle vue
 document.addEventListener('DOMContentLoaded',function(){
+  // Filtre perso
   document.querySelectorAll('#kpiTimeFilter .time-btn').forEach(function(btn){
     btn.addEventListener('click',function(){
       document.querySelectorAll('#kpiTimeFilter .time-btn').forEach(function(b){b.classList.remove('active');});
-      btn.classList.add('active');
-      loadKpis(btn.dataset.period);
+      btn.classList.add('active');loadKpis(btn.dataset.period);
+    });
+  });
+  // Filtre equipe
+  document.querySelectorAll('#kpiTimeFilterTeam .time-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      document.querySelectorAll('#kpiTimeFilterTeam .time-btn').forEach(function(b){b.classList.remove('active');});
+      btn.classList.add('active');currentKpiPeriod=btn.dataset.period;loadKpis();
+    });
+  });
+  // Toggle vue equipe/perso
+  document.querySelectorAll('.kpi-view-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      document.querySelectorAll('.kpi-view-btn').forEach(function(b){b.classList.remove('active');});
+      btn.classList.add('active');currentKpiView=btn.dataset.view;loadKpis();
     });
   });
 });
