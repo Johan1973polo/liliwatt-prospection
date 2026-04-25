@@ -425,26 +425,12 @@ app.post('/api/admin/retirer-lead', verifyToken, isAdminMW, async (req, res) => 
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ===== POST /api/admin/scraper =====
+// ===== POST /api/admin/scraper (DESACTIVE — Phase 4) =====
 app.post('/api/admin/scraper', verifyToken, isAdminMW, async (req, res) => {
-  try {
-    const { ville, secteur } = req.body;
-    if (!ville || !secteur) return res.status(400).json({ error: 'ville et secteur requis' });
-
-    const { execSync } = require('child_process');
-    const script = path.join(__dirname, 'scraper.py');
-    const output = execSync(`python3 "${script}" ${secteur} "${ville}"`, {
-      timeout: 120000, env: { ...process.env, PATH: process.env.PATH }
-    }).toString();
-
-    let trouves = 0, nouveaux = 0;
-    for (const line of output.split('\n')) {
-      const m1 = line.match(/(\d+) trouvés/); if (m1) trouves = parseInt(m1[1]);
-      const m2 = line.match(/(\d+) nouvelles/); if (m2) nouveaux = parseInt(m2[1]);
-    }
-    console.log(`⚡ Scraping ${secteur}/${ville}: ${trouves} trouves, ${nouveaux} ajoutes`);
-    res.json({ success: true, trouves, nouveaux });
-  } catch(e) { console.error('Scraper error:', e.message); res.status(500).json({ error: e.message }); }
+  return res.status(503).json({
+    error: 'Module scraper en maintenance',
+    message: 'Le scraper Google Places sera reactive dans la prochaine version.'
+  });
 });
 
 // ===== STATIC =====
