@@ -37,7 +37,6 @@ app.post('/api/auth/login', async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
-      include: { credentials: { where: { serviceName: 'RGPD' }, select: { login: true } } }
     });
 
     if (!user || !user.isActive) return res.status(401).json({ error: 'Identifiants invalides' });
@@ -48,9 +47,12 @@ app.post('/api/auth/login', async (req, res) => {
 
     await prisma.user.update({ where: { id: user.id }, data: { lastSeen: new Date() } });
 
+    // Charger le token RGPD separement
+    const rgpdCred = await prisma.credential.findFirst({ where: { userId: user.id, serviceName: 'RGPD' }, select: { login: true } });
+
     const isAdm = user.role === 'ADMIN' || user.email === 'johan.mallet@liliwatt.fr' || user.email === 'kevin.moreau@liliwatt.fr';
     const role = isAdm ? 'admin' : (user.role === 'REFERENT' ? 'referent' : 'vendeur');
-    const tokenRgpd = user.credentials[0]?.login || '';
+    const tokenRgpd = rgpdCred?.login || '';
 
     const token = jwt.sign({
       id: user.id, email: user.email,
@@ -68,6 +70,14 @@ app.post('/api/auth/login', async (req, res) => {
   } catch(e) { console.error('Login error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// ===== POST /api/heartbeat =====
+app.post('/api/heartbeat', verifyToken, async (req, res) => {
+  try {
+    await prisma.user.update({ where: { id: req.user.id }, data: { lastSeen: new Date() } });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: 'Heartbeat failed' }); }
+});
+
 // ===== GET /api/prospects/brute (Neon) =====
 app.get('/api/prospects/brute', verifyToken, async (req, res) => {
   try {
@@ -79,7 +89,22 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
     const fSearch = (req.query.search || '').toLowerCase();
 
     const where = { source: { in: ['BRUTE', 'MANUELLE'] } };
-    if (!isAdmin) {
+    if (isAdmin) {
+      // Admin voit tout
+    } else if (req.user.role === 'referent') {
+      // Referent voit ses vendeurs + vendeurs de ses sous-referents + libres
+      const sousRefs = await prisma.user.findMany({ where: { referentId: userId, role: 'REFERENT', isActive: true }, select: { id: true } });
+      const sousRefIds = sousRefs.map(r => r.id);
+      const mesVendeurs = await prisma.user.findMany({
+        where: { isActive: true, OR: [{ referentId: userId }, ...(sousRefIds.length ? [{ referentId: { in: sousRefIds } }] : [])] },
+        select: { id: true }
+      });
+      const ids = mesVendeurs.map(v => v.id);
+      ids.push(userId);
+      sousRefIds.forEach(id => ids.push(id));
+      where.OR = [{ vendeurId: { in: ids } }, { vendeurId: null }];
+    } else {
+      // Vendeur : ses fiches + libres
       where.OR = [{ vendeurId: userId }, { vendeurId: null }];
     }
     if (fSecteur) where.secteur = { contains: fSecteur, mode: 'insensitive' };
@@ -94,19 +119,24 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
     }
     if (fSearch) where.raisonSociale = { contains: fSearch, mode: 'insensitive' };
 
-    const prospects = await prisma.prospect.findMany({ where, orderBy: [{ vendeurId: 'desc' }, { createdAt: 'desc' }], take: 100 });
+    const prospects = await prisma.prospect.findMany({
+      where, orderBy: [{ vendeurId: 'desc' }, { createdAt: 'desc' }], take: 200,
+      include: { vendeur: { select: { email: true, firstName: true, lastName: true } } }
+    });
 
     const mapped = prospects.map(p => ({
       _row: p.id, id: p.id, place_id: p.placeId,
       raison_sociale: p.raisonSociale, adresse: p.adresse || '', ville: p.ville || '',
       secteur: p.secteur || '', telephone: p.telephone || '', site_web: p.siteWeb || '',
       note_google: p.noteGoogle || '', nb_avis: p.nbAvis || '',
-      vendeur_attribue: p.vendeurId ? req.user.email : '',
+      vendeur_attribue: p.vendeur?.email || '',
       statut_appel: p.statutAppel ? p.statutAppel.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : '',
       note_appel: p.noteAppel || '', date_rappel: p.dateRappel || '',
       rgpd_envoye: p.rgpdEnvoye ? 'oui' : '', email_envoye_a: p.emailEnvoyeA || '',
       date_dernier_appel: p.dateDernierAppel || '',
       _attribue: p.vendeurId === userId || (isAdmin && !!p.vendeurId),
+      isManuelle: p.isManuelle, isVerrouillee: p.isVerrouillee,
+      vendeur_nom: p.vendeur ? `${p.vendeur.firstName || ''} ${p.vendeur.lastName || ''}`.trim() : '',
     }));
 
     const allBrute = await prisma.prospect.findMany({
@@ -123,10 +153,31 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
 app.get('/api/prospects/leads', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
+    const role = req.user.role;
+
+    let vendeurFilter;
+    if (role === 'admin') {
+      vendeurFilter = { not: null };
+    } else if (role === 'referent') {
+      const sousRefs = await prisma.user.findMany({ where: { referentId: userId, role: 'REFERENT', isActive: true }, select: { id: true } });
+      const sousRefIds = sousRefs.map(r => r.id);
+      const mesVendeurs = await prisma.user.findMany({
+        where: { isActive: true, OR: [{ referentId: userId }, ...(sousRefIds.length ? [{ referentId: { in: sousRefIds } }] : [])] },
+        select: { id: true }
+      });
+      const ids = mesVendeurs.map(v => v.id);
+      ids.push(userId);
+      sousRefIds.forEach(id => ids.push(id));
+      vendeurFilter = { in: ids };
+    } else {
+      vendeurFilter = userId;
+    }
+
     const items = await prisma.prospect.findMany({
-      where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: userId },
+      where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: vendeurFilter },
       orderBy: [{ dateFinLivraison: 'asc' }],
-      take: 200
+      take: 200,
+      include: { vendeur: { select: { email: true, firstName: true, lastName: true } } }
     });
 
     const prospects = items.map(p => ({
@@ -139,7 +190,8 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
       volume_total: p.volumeTotal || '',
       segments: p.segment || '', energie: p.energie || '',
       statut_appel: p.statutAppel || '', note_appel: p.noteAppel || '',
-      vendeur_attribue: req.user.email
+      vendeur_attribue: p.vendeur?.email || req.user.email,
+      vendeur_nom: p.vendeur ? `${p.vendeur.firstName || ''} ${p.vendeur.lastName || ''}`.trim() : '',
     }));
 
     console.log(`💎 LEADS pour ${req.user.email}: ${prospects.length} fiches`);
@@ -157,11 +209,11 @@ app.post('/api/prospects/prendre/:id', verifyToken, async (req, res) => {
     if (prospect.isVerrouillee) return res.status(403).json({ error: 'Fiche verrouillee' });
     if (prospect.vendeurId && prospect.vendeurId !== userId) return res.status(409).json({ error: 'Fiche deja attribuee' });
 
-    await prisma.prospect.update({ where: { id }, data: { vendeurId: userId, statutAppel: 'A_APPELER' } });
+    const updated = await prisma.prospect.update({ where: { id }, data: { vendeurId: userId, statutAppel: 'A_APPELER' } });
     await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'ATTRIBUTION', metadata: { raisonSociale: prospect.raisonSociale } } });
 
     console.log(`📌 ${prospect.raisonSociale} prise par ${req.user.email}`);
-    res.json({ success: true });
+    res.json({ success: true, prospect: { ...updated, _row: updated.id } });
   } catch(e) { console.error('Prendre error:', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -198,6 +250,11 @@ app.post('/api/prospects/statut/:id', verifyToken, async (req, res) => {
     await prisma.prospect.update({ where: { id }, data });
     await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'STATUS_CHANGE', metadata: { newStatut: statutEnum } } });
 
+    // Log CALL si statut post-appel
+    if (['APPELE','INTERESSE','PAS_INTERESSE','NE_REPOND_PAS','A_RAPPELER','FAUX_NUMERO','ATTENTE_DOCUMENTS','DOSSIER_RECU','CLIENT_SIGNE'].includes(statutEnum)) {
+      await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'CALL', metadata: { resultat: statutEnum } } });
+    }
+
     console.log(`📞 ${prospect.raisonSociale}: ${statutEnum} par ${req.user.email}`);
     res.json({ success: true });
   } catch(e) { console.error('Statut error:', e); res.status(500).json({ error: e.message }); }
@@ -209,12 +266,12 @@ app.post('/api/prospects/mail/:id', verifyToken, async (req, res) => {
     const { email_destinataire, nom_gerant } = req.body;
     if (!email_destinataire) return res.status(400).json({ error: 'Email requis' });
 
-    const vendeurUser = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      include: { credentials: { where: { serviceName: 'ZOHO' }, select: { login: true, passwordEncrypted: true } } }
+    const zohoCred = await prisma.credential.findFirst({
+      where: { userId: req.user.id, serviceName: 'ZOHO' },
+      select: { login: true, passwordEncrypted: true }
     });
-    const zohoLogin = vendeurUser?.credentials[0]?.login || req.user.email;
-    const zohoPass = vendeurUser?.credentials[0]?.passwordEncrypted || '';
+    const zohoLogin = zohoCred?.login || req.user.email;
+    const zohoPass = zohoCred?.passwordEncrypted || '';
     if (!zohoPass) return res.status(400).json({ error: 'Credentials Zoho non configurees' });
 
     const rgpdLink = `https://liliwatt-courtier.onrender.com/rgpd/${req.user.token_rgpd}`;
@@ -257,6 +314,199 @@ app.get('/api/kpis', verifyToken, async (req, res) => {
   } catch(e) { console.error('KPIs error:', e); res.status(500).json({ error: e.message }); }
 });
 
+// ===== GET /api/kpis/me (KPIs vendeur avec filtres temporels) =====
+const { getDateRange } = require('./lib/dateFilters');
+
+app.get('/api/kpis/me', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const period = req.query.period || 'all';
+    const dateFilter = getDateRange(period);
+    const actWhere = dateFilter ? { userId, timestamp: dateFilter } : { userId };
+
+    const [appels, rgpd, fiches, ventes, factures, pipeline, temps] = await Promise.all([
+      prisma.activityLog.count({ where: { ...actWhere, type: 'CALL' } }),
+      prisma.activityLog.count({ where: { ...actWhere, type: 'RGPD_SENT' } }),
+      prisma.activityLog.count({ where: { ...actWhere, type: 'ATTRIBUTION' } }),
+      prisma.activityLog.count({ where: { ...actWhere, type: 'SALE_SIGNED' } }),
+      prisma.activityLog.count({ where: { ...actWhere, type: 'INVOICE_RECEIVED' } }),
+      prisma.prospect.groupBy({ by: ['statutAppel'], where: { vendeurId: userId }, _count: true }),
+      prisma.workSession.aggregate({ where: { userId, startedAt: dateFilter || undefined }, _sum: { durationMinutes: true } }),
+    ]);
+
+    const adhesion = appels > 0 ? Math.round((rgpd / appels) * 1000) / 10 : 0;
+    const retour = rgpd > 0 ? Math.round((factures / rgpd) * 1000) / 10 : 0;
+    const closing = factures > 0 ? Math.round((ventes / factures) * 1000) / 10 : 0;
+    function color(v, type) {
+      const t = type === 'adhesion' ? [30,15,5] : [30,20,10];
+      return v >= t[0] ? 'fire' : v >= t[1] ? 'green' : v >= t[2] ? 'amber' : 'red';
+    }
+    const ps = pipeline.reduce((a, p) => { a[p.statutAppel || 'NULL'] = p._count; return a; }, {});
+
+    res.json({
+      period,
+      counters: { appels, rgpd, fichesPrises: fiches, factures, ventes, tempsActifMinutes: temps._sum.durationMinutes || 0 },
+      ratios: {
+        adhesion: { value: adhesion, color: color(adhesion, 'adhesion') },
+        retourFacture: { value: retour, color: color(retour, 'retour') },
+        closing: { value: closing, color: color(closing, 'closing') },
+      },
+      pipeline: {
+        aAppeler: ps.A_APPELER || 0, appele: ps.APPELE || 0, interesse: ps.INTERESSE || 0,
+        attenteDocs: ps.ATTENTE_DOCUMENTS || 0, dossierRecu: ps.DOSSIER_RECU || 0,
+        aRappeler: ps.A_RAPPELER || 0, clientSigne: ps.CLIENT_SIGNE || 0,
+      }
+    });
+  } catch(e) { console.error('KPIs/me error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== GET /api/kpis/me/activity =====
+app.get('/api/kpis/me/activity', verifyToken, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const activities = await prisma.activityLog.findMany({
+      where: { userId: req.user.id },
+      orderBy: { timestamp: 'desc' },
+      take: limit,
+      include: { prospect: { select: { id: true, raisonSociale: true, telephone: true } } }
+    });
+    res.json({
+      items: activities.map(a => ({
+        id: a.id, type: a.type, timestamp: a.timestamp,
+        prospect: a.prospect ? { id: a.prospect.id, nom: a.prospect.raisonSociale, telephone: a.prospect.telephone } : null,
+        metadata: a.metadata,
+      })),
+      total: activities.length,
+    });
+  } catch(e) { console.error('Activity error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== GET /api/kpis/me/funnel =====
+app.get('/api/kpis/me/funnel', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const period = req.query.period || 'month';
+    const dateFilter = getDateRange(period);
+    const w = dateFilter ? { userId, timestamp: dateFilter } : { userId };
+
+    const [fiches, appels, rgpd, factures, ventes] = await Promise.all([
+      prisma.activityLog.count({ where: { ...w, type: 'ATTRIBUTION' } }),
+      prisma.activityLog.count({ where: { ...w, type: 'CALL' } }),
+      prisma.activityLog.count({ where: { ...w, type: 'RGPD_SENT' } }),
+      prisma.activityLog.count({ where: { ...w, type: 'INVOICE_RECEIVED' } }),
+      prisma.activityLog.count({ where: { ...w, type: 'SALE_SIGNED' } }),
+    ]);
+
+    res.json({
+      period,
+      steps: [
+        { icon: '📋', label: 'Fiches prises', value: fiches, subtext: null },
+        { icon: '📞', label: 'Appels', value: appels, subtext: fiches > 0 ? `${(appels/fiches).toFixed(1)} par fiche` : null },
+        { icon: '✉️', label: 'RGPD', value: rgpd, subtext: appels > 0 ? `${((rgpd/appels)*100).toFixed(1)}% adhesion` : null },
+        { icon: '📄', label: 'Factures', value: factures, subtext: rgpd > 0 ? `${((factures/rgpd)*100).toFixed(1)}% retour` : null },
+        { icon: '🏆', label: 'Signes', value: ventes, subtext: factures > 0 ? `${((ventes/factures)*100).toFixed(0)}% closing` : null },
+      ]
+    });
+  } catch(e) { console.error('Funnel error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== GET /api/kpis/team (referent + admin) =====
+app.get('/api/kpis/team', verifyToken, async (req, res) => {
+  try {
+    const { id: userId, role } = req.user;
+    const period = req.query.period || 'today';
+    const dateFilter = getDateRange(period);
+    if (role === 'vendeur') return res.status(403).json({ error: 'Reserve aux referents et admins' });
+
+    let vendeurIds = [], teamLabel = '';
+    if (role === 'admin') {
+      const all = await prisma.user.findMany({ where: { role: 'VENDEUR', isActive: true }, select: { id: true } });
+      vendeurIds = all.map(v => v.id); teamLabel = 'LILIWATT global';
+    } else {
+      const sousRefs = await prisma.user.findMany({ where: { referentId: userId, role: 'REFERENT', isActive: true }, select: { id: true } });
+      const sousRefIds = sousRefs.map(r => r.id);
+      const mesV = await prisma.user.findMany({
+        where: { role: 'VENDEUR', isActive: true, OR: [{ referentId: userId }, ...(sousRefIds.length ? [{ referentId: { in: sousRefIds } }] : [])] },
+        select: { id: true }
+      });
+      vendeurIds = mesV.map(v => v.id); teamLabel = 'Mon equipe';
+    }
+
+    if (!vendeurIds.length) return res.json({ teamLabel, period, vendeurCount: 0, counters: { appels: 0, rgpd: 0, factures: 0, ventes: 0, fichesPrises: 0 }, ratios: { adhesion: { value: 0, color: 'red' }, retourFacture: { value: 0, color: 'red' }, closing: { value: 0, color: 'red' } }, leaderboard: [] });
+
+    const actW = dateFilter ? { userId: { in: vendeurIds }, timestamp: dateFilter } : { userId: { in: vendeurIds } };
+    const [appels, rgpd, factures, ventes, fiches] = await Promise.all([
+      prisma.activityLog.count({ where: { ...actW, type: 'CALL' } }),
+      prisma.activityLog.count({ where: { ...actW, type: 'RGPD_SENT' } }),
+      prisma.activityLog.count({ where: { ...actW, type: 'INVOICE_RECEIVED' } }),
+      prisma.activityLog.count({ where: { ...actW, type: 'SALE_SIGNED' } }),
+      prisma.activityLog.count({ where: { ...actW, type: 'ATTRIBUTION' } }),
+    ]);
+
+    const adhesion = appels > 0 ? Math.round((rgpd / appels) * 1000) / 10 : 0;
+    const retour = rgpd > 0 ? Math.round((factures / rgpd) * 1000) / 10 : 0;
+    const closing = factures > 0 ? Math.round((ventes / factures) * 1000) / 10 : 0;
+    function col(v, t) { const th = t === 'adhesion' ? [30,15,5] : [30,20,10]; return v >= th[0] ? 'fire' : v >= th[1] ? 'green' : v >= th[2] ? 'amber' : 'red'; }
+
+    const leaderboard = await Promise.all(vendeurIds.map(async vid => {
+      const [u, vA, vR, vV, vT] = await Promise.all([
+        prisma.user.findUnique({ where: { id: vid }, select: { id: true, firstName: true, lastName: true, email: true, lastSeen: true } }),
+        prisma.activityLog.count({ where: { userId: vid, type: 'CALL', ...(dateFilter && { timestamp: dateFilter }) } }),
+        prisma.activityLog.count({ where: { userId: vid, type: 'RGPD_SENT', ...(dateFilter && { timestamp: dateFilter }) } }),
+        prisma.activityLog.count({ where: { userId: vid, type: 'SALE_SIGNED', ...(dateFilter && { timestamp: dateFilter }) } }),
+        prisma.workSession.aggregate({ where: { userId: vid, ...(dateFilter && { startedAt: dateFilter }) }, _sum: { durationMinutes: true } }),
+      ]);
+      const adh = vA > 0 ? Math.round((vR / vA) * 1000) / 10 : 0;
+      const isOnline = u.lastSeen && (Date.now() - new Date(u.lastSeen).getTime()) < 5 * 60 * 1000;
+      return {
+        id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email,
+        appels: vA, rgpd: vR, ventes: vV,
+        adhesion: { value: adh, color: col(adh, 'adhesion') },
+        tempsActifMinutes: vT._sum.durationMinutes || 0,
+        status: isOnline ? 'online' : 'offline',
+      };
+    }));
+    leaderboard.sort((a, b) => b.appels - a.appels);
+
+    res.json({
+      teamLabel, period, vendeurCount: vendeurIds.length,
+      objectives: { appelsCible: 120 * vendeurIds.length, tempsCible: 300 },
+      counters: { appels, rgpd, factures, ventes, fichesPrises: fiches },
+      ratios: { adhesion: { value: adhesion, color: col(adhesion, 'adhesion') }, retourFacture: { value: retour, color: col(retour, 'retour') }, closing: { value: closing, color: col(closing, 'closing') } },
+      leaderboard,
+    });
+  } catch(e) { console.error('Team KPIs error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== POST /api/prospects/manuelle (Neon) =====
+app.post('/api/prospects/manuelle', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { raisonSociale, telephone, source: sourceManuelle, nomContact, prenomContact, email, siren, adresse, notes } = req.body;
+    if (!raisonSociale || !telephone || !sourceManuelle) return res.status(400).json({ error: 'raisonSociale, telephone et source obligatoires' });
+
+    let codePostal = null;
+    if (adresse) { const m = adresse.match(/\b(\d{5})\b/); if (m) codePostal = m[1]; }
+    const signataire = [prenomContact, nomContact].filter(Boolean).join(' ').trim() || null;
+
+    const prospect = await prisma.prospect.create({
+      data: {
+        source: 'MANUELLE', raisonSociale: raisonSociale.trim(), telephone: telephone.trim(),
+        email: email?.trim() || null, siren: siren?.trim() || null, adresse: adresse?.trim() || null,
+        codePostal, signataire, sourceManuelle: sourceManuelle.trim(), noteAppel: notes?.trim() || null,
+        vendeurId: userId, statutAppel: 'A_APPELER', isManuelle: true, isVerrouillee: true,
+      }
+    });
+
+    await prisma.activityLog.create({
+      data: { userId, prospectId: prospect.id, type: 'PROSPECT_CREATED_MANUAL', metadata: { raisonSociale, source: sourceManuelle } }
+    });
+
+    console.log(`🔒 Fiche manuelle creee: ${raisonSociale} par ${req.user.email}`);
+    res.json({ success: true, prospect: { ...prospect, _row: prospect.id } });
+  } catch(e) { console.error('Manuelle error:', e); res.status(500).json({ error: e.message }); }
+});
+
 // =============================================================
 // ADMIN ROUTES (Neon)
 // =============================================================
@@ -264,31 +514,28 @@ app.get('/api/kpis', verifyToken, async (req, res) => {
 // ===== GET /api/admin/stats =====
 app.get('/api/admin/stats', verifyToken, isAdminMW, async (req, res) => {
   try {
-    const [totalBrute, totalPremium, totalSigned, attribues, libres, rgpdEnvoyes] = await Promise.all([
-      prisma.prospect.count({ where: { source: 'BRUTE' } }),
-      prisma.prospect.count({ where: { source: 'PREMIUM' } }),
-      prisma.prospect.count({ where: { source: 'PREMIUM_SIGNED' } }),
-      prisma.prospect.count({ where: { vendeurId: { not: null } } }),
-      prisma.prospect.count({ where: { vendeurId: null, source: { in: ['BRUTE', 'PREMIUM'] } } }),
-      prisma.prospect.count({ where: { rgpdEnvoye: true } }),
+    const [total, traitees, libres, hors_pool, signes] = await Promise.all([
+      prisma.prospect.count({ where: { source: { in: ['BRUTE', 'MANUELLE'] } } }),
+      prisma.prospect.count({ where: { source: { in: ['BRUTE', 'MANUELLE'] }, statutAppel: { not: null, notIn: ['A_APPELER'] } } }),
+      prisma.prospect.count({ where: { source: { in: ['BRUTE', 'MANUELLE'] }, vendeurId: null } }),
+      prisma.prospect.count({ where: { source: { in: ['BRUTE', 'MANUELLE'] }, statutAppel: 'FAUX_NUMERO' } }),
+      prisma.prospect.count({ where: { source: { in: ['BRUTE', 'MANUELLE'] }, statutAppel: 'CLIENT_SIGNE' } }),
     ]);
 
-    // Stats par vendeur
     const vendeurs = await prisma.user.findMany({
       where: { role: 'VENDEUR', isActive: true },
-      select: { email: true, firstName: true, lastName: true, _count: { select: { prospectsAttribues: true } } }
+      select: { id: true, email: true, firstName: true, lastName: true }
     });
-    const par_vendeur = vendeurs.map(v => ({
-      email: v.email, nom: `${v.firstName || ''} ${v.lastName || ''}`.trim(),
-      nb_fiches: v._count.prospectsAttribues
+    const par_vendeur = await Promise.all(vendeurs.map(async v => {
+      const [nb_fiches, nb_traitees, nb_signes] = await Promise.all([
+        prisma.prospect.count({ where: { vendeurId: v.id, source: { in: ['BRUTE', 'MANUELLE'] } } }),
+        prisma.prospect.count({ where: { vendeurId: v.id, source: { in: ['BRUTE', 'MANUELLE'] }, statutAppel: { not: null, notIn: ['A_APPELER'] } } }),
+        prisma.prospect.count({ where: { vendeurId: v.id, source: { in: ['BRUTE', 'MANUELLE'] }, statutAppel: 'CLIENT_SIGNE' } }),
+      ]);
+      return { email: v.email, nom: `${v.firstName || ''} ${v.lastName || ''}`.trim(), nb_fiches, nb_traitees, nb_signes };
     }));
 
-    res.json({ success: true, stats: {
-      total: totalBrute + totalPremium + totalSigned,
-      brute: totalBrute, premium: totalPremium, signed: totalSigned,
-      attribues, libres, rgpdEnvoyes, signes: totalSigned,
-      par_vendeur
-    }});
+    res.json({ success: true, stats: { total, traitees, libres, hors_pool, signes, par_vendeur } });
   } catch(e) { console.error('Stats error:', e); res.status(500).json({ error: e.message }); }
 });
 
