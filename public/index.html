@@ -468,7 +468,7 @@ const SECTEURS_FR = {
 function secteurFR(s){return SECTEURS_FR[s]||s||'—';}
 function isAdmin(){return user && (user.role==='admin'||user.email==='johan.mallet@liliwatt.fr'||user.email==='kevin.moreau@liliwatt.fr');}
 
-if (token && user) showApp(); else showLogin();
+if (token && user && user.role) { showApp(); } else if (token) { console.log('User cache obsolete, deconnexion forcee'); localStorage.removeItem('p_token'); localStorage.removeItem('p_user'); token=null; user=null; showLogin(); } else { showLogin(); }
 
 function showLogin(){document.getElementById('loginPage').classList.remove('hidden');document.getElementById('appPage').classList.add('hidden');}
 function showApp(){document.getElementById('loginPage').classList.add('hidden');document.getElementById('appPage').classList.remove('hidden');document.getElementById('uName').textContent=user.prenom||user.nom;var r=user.role||'vendeur';document.getElementById('uRole').textContent=isAdmin()?'Admin':(r==='referent'?'Referent':'Vendeur');document.getElementById('tabAdmin').style.display=isAdmin()?'block':'none';if(r==='admin'||r==='referent'){document.getElementById('kpiViewToggle').style.display='block';currentKpiView='team';}else{document.getElementById('kpiViewToggle').style.display='none';currentKpiView='me';}loadBrute();loadKpis();}
