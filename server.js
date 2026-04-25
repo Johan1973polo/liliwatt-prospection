@@ -242,6 +242,11 @@ app.post('/api/prospects/statut/:id', verifyToken, async (req, res) => {
     await prisma.prospect.update({ where: { id }, data });
     await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'STATUS_CHANGE', metadata: { newStatut: statutEnum } } });
 
+    // Log CALL si statut post-appel
+    if (['APPELE','INTERESSE','PAS_INTERESSE','NE_REPOND_PAS','A_RAPPELER','FAUX_NUMERO','ATTENTE_DOCUMENTS','DOSSIER_RECU','CLIENT_SIGNE'].includes(statutEnum)) {
+      await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'CALL', metadata: { resultat: statutEnum } } });
+    }
+
     console.log(`📞 ${prospect.raisonSociale}: ${statutEnum} par ${req.user.email}`);
     res.json({ success: true });
   } catch(e) { console.error('Statut error:', e); res.status(500).json({ error: e.message }); }
@@ -299,6 +304,102 @@ app.get('/api/kpis', verifyToken, async (req, res) => {
 
     res.json({ success: true, kpis: { total, appels, interesses, rappels, rgpd }, historique });
   } catch(e) { console.error('KPIs error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== GET /api/kpis/me (KPIs vendeur avec filtres temporels) =====
+const { getDateRange } = require('./lib/dateFilters');
+
+app.get('/api/kpis/me', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const period = req.query.period || 'all';
+    const dateFilter = getDateRange(period);
+    const actWhere = dateFilter ? { userId, timestamp: dateFilter } : { userId };
+
+    const [appels, rgpd, fiches, ventes, factures, pipeline, temps] = await Promise.all([
+      prisma.activityLog.count({ where: { ...actWhere, type: 'CALL' } }),
+      prisma.activityLog.count({ where: { ...actWhere, type: 'RGPD_SENT' } }),
+      prisma.activityLog.count({ where: { ...actWhere, type: 'ATTRIBUTION' } }),
+      prisma.activityLog.count({ where: { ...actWhere, type: 'SALE_SIGNED' } }),
+      prisma.activityLog.count({ where: { ...actWhere, type: 'INVOICE_RECEIVED' } }),
+      prisma.prospect.groupBy({ by: ['statutAppel'], where: { vendeurId: userId }, _count: true }),
+      prisma.workSession.aggregate({ where: { userId, startedAt: dateFilter || undefined }, _sum: { durationMinutes: true } }),
+    ]);
+
+    const adhesion = appels > 0 ? Math.round((rgpd / appels) * 1000) / 10 : 0;
+    const retour = rgpd > 0 ? Math.round((factures / rgpd) * 1000) / 10 : 0;
+    const closing = factures > 0 ? Math.round((ventes / factures) * 1000) / 10 : 0;
+    function color(v, type) {
+      const t = type === 'adhesion' ? [30,15,5] : [30,20,10];
+      return v >= t[0] ? 'fire' : v >= t[1] ? 'green' : v >= t[2] ? 'amber' : 'red';
+    }
+    const ps = pipeline.reduce((a, p) => { a[p.statutAppel || 'NULL'] = p._count; return a; }, {});
+
+    res.json({
+      period,
+      counters: { appels, rgpd, fichesPrises: fiches, factures, ventes, tempsActifMinutes: temps._sum.durationMinutes || 0 },
+      ratios: {
+        adhesion: { value: adhesion, color: color(adhesion, 'adhesion') },
+        retourFacture: { value: retour, color: color(retour, 'retour') },
+        closing: { value: closing, color: color(closing, 'closing') },
+      },
+      pipeline: {
+        aAppeler: ps.A_APPELER || 0, appele: ps.APPELE || 0, interesse: ps.INTERESSE || 0,
+        attenteDocs: ps.ATTENTE_DOCUMENTS || 0, dossierRecu: ps.DOSSIER_RECU || 0,
+        aRappeler: ps.A_RAPPELER || 0, clientSigne: ps.CLIENT_SIGNE || 0,
+      }
+    });
+  } catch(e) { console.error('KPIs/me error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== GET /api/kpis/me/activity =====
+app.get('/api/kpis/me/activity', verifyToken, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const activities = await prisma.activityLog.findMany({
+      where: { userId: req.user.id },
+      orderBy: { timestamp: 'desc' },
+      take: limit,
+      include: { prospect: { select: { id: true, raisonSociale: true, telephone: true } } }
+    });
+    res.json({
+      items: activities.map(a => ({
+        id: a.id, type: a.type, timestamp: a.timestamp,
+        prospect: a.prospect ? { id: a.prospect.id, nom: a.prospect.raisonSociale, telephone: a.prospect.telephone } : null,
+        metadata: a.metadata,
+      })),
+      total: activities.length,
+    });
+  } catch(e) { console.error('Activity error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== GET /api/kpis/me/funnel =====
+app.get('/api/kpis/me/funnel', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const period = req.query.period || 'month';
+    const dateFilter = getDateRange(period);
+    const w = dateFilter ? { userId, timestamp: dateFilter } : { userId };
+
+    const [fiches, appels, rgpd, factures, ventes] = await Promise.all([
+      prisma.activityLog.count({ where: { ...w, type: 'ATTRIBUTION' } }),
+      prisma.activityLog.count({ where: { ...w, type: 'CALL' } }),
+      prisma.activityLog.count({ where: { ...w, type: 'RGPD_SENT' } }),
+      prisma.activityLog.count({ where: { ...w, type: 'INVOICE_RECEIVED' } }),
+      prisma.activityLog.count({ where: { ...w, type: 'SALE_SIGNED' } }),
+    ]);
+
+    res.json({
+      period,
+      steps: [
+        { icon: '📋', label: 'Fiches prises', value: fiches, subtext: null },
+        { icon: '📞', label: 'Appels', value: appels, subtext: fiches > 0 ? `${(appels/fiches).toFixed(1)} par fiche` : null },
+        { icon: '✉️', label: 'RGPD', value: rgpd, subtext: appels > 0 ? `${((rgpd/appels)*100).toFixed(1)}% adhesion` : null },
+        { icon: '📄', label: 'Factures', value: factures, subtext: rgpd > 0 ? `${((factures/rgpd)*100).toFixed(1)}% retour` : null },
+        { icon: '🏆', label: 'Signes', value: ventes, subtext: factures > 0 ? `${((ventes/factures)*100).toFixed(0)}% closing` : null },
+      ]
+    });
+  } catch(e) { console.error('Funnel error:', e); res.status(500).json({ error: e.message }); }
 });
 
 // ===== POST /api/prospects/manuelle (Neon) =====
