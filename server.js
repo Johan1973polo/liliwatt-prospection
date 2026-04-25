@@ -44,35 +44,46 @@ const verifyToken = (req, res, next) => {
   catch(e) { return res.status(401).json({ error: 'Token invalide' }); }
 };
 
-// Login
+// Login (Neon + bcrypt)
+const { prisma } = require('./lib/db');
+const bcrypt = require('bcryptjs');
+
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SHEETS_MDP_ID, range: 'A:K' });
-    const rows = r.data.values || [];
-    for (const row of rows) {
-      if ((row[3] || '').toLowerCase() === email.toLowerCase()) {
-        const statut = row[10] || 'actif';
-        if (statut === 'bloqué' || statut === 'inactif') return res.status(403).json({ error: 'Compte bloqué' });
-        if (row[2] === password) {
-          const isAdm = (row[9]||'').toLowerCase().trim() === 'admin' || email.toLowerCase() === 'johan.mallet@liliwatt.fr' || email.toLowerCase() === 'kevin.moreau@liliwatt.fr';
-          const role = isAdm ? 'admin' : 'vendeur';
-          console.log('LOGIN:', email, '| colJ:', row[9], '| isAdmin:', isAdm, '| role:', role);
-          const token = jwt.sign({
-            email, nom: (row[1] || '') + ' ' + (row[0] || ''), prenom: row[1] || '', nom_famille: row[0] || '',
-            role, drive_folder_id: row[5] || '', token_rgpd: row[7] || '',
-            mdp: row[2] || ''
-          }, JWT_SECRET, { expiresIn: '24h' });
-          return res.json({ success: true, token, user: {
-            email, nom: (row[1] || '') + ' ' + (row[0] || ''), prenom: row[1] || '',
-            role, token_rgpd: row[7] || ''
-          }});
-        }
-        return res.status(401).json({ error: 'Mot de passe incorrect' });
-      }
-    }
-    return res.status(401).json({ error: 'Email non trouvé' });
+    const { email, password, mdp: mdpField } = req.body;
+    const pwd = password || mdpField;
+    if (!email || !pwd) return res.status(400).json({ error: 'Email et mot de passe requis' });
+
+    const user = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+      include: { credentials: { where: { serviceName: 'RGPD' }, select: { login: true } } }
+    });
+
+    if (!user || !user.isActive) return res.status(401).json({ error: 'Identifiants invalides' });
+    if (!user.passwordHash) return res.status(401).json({ error: 'Compte non configure' });
+
+    const ok = await bcrypt.compare(pwd, user.passwordHash);
+    if (!ok) return res.status(401).json({ error: 'Identifiants invalides' });
+
+    await prisma.user.update({ where: { id: user.id }, data: { lastSeen: new Date() } });
+
+    const isAdm = user.role === 'ADMIN' || user.email === 'johan.mallet@liliwatt.fr' || user.email === 'kevin.moreau@liliwatt.fr';
+    const role = isAdm ? 'admin' : (user.role === 'REFERENT' ? 'referent' : 'vendeur');
+    const tokenRgpd = user.credentials[0]?.login || '';
+
+    const token = jwt.sign({
+      id: user.id, email: user.email,
+      prenom: user.firstName || '', nom_famille: user.lastName || '',
+      nom: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      role, token_rgpd: tokenRgpd, referentId: user.referentId
+    }, JWT_SECRET, { expiresIn: '24h' });
+
+    console.log('LOGIN:', user.email, '| role:', role);
+    res.json({ success: true, token, user: {
+      id: user.id, email: user.email,
+      prenom: user.firstName || '', nom: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      role, token_rgpd: tokenRgpd
+    }});
   } catch(e) { console.error('Login error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
@@ -114,51 +125,74 @@ async function ensureColumn(sheetName, colName) {
   return idx;
 }
 
-// ===== GET /api/prospects/brute =====
+// ===== GET /api/prospects/brute (Neon) =====
 app.get('/api/prospects/brute', verifyToken, async (req, res) => {
   try {
-    const rows = await getSheetData('BASE BRUTE');
-    if (rows.length < 2) return res.json({ success: true, prospects: [] });
-    const headers = rows[0];
-    const vendeurCol = headers.findIndex(h => h.toLowerCase().includes('vendeur_attribue'));
-    const statutCol = headers.findIndex(h => h.toLowerCase().includes('statut_appel'));
-    const secteurCol = headers.findIndex(h => h.toLowerCase().includes('secteur'));
-    const villeCol = headers.findIndex(h => h.toLowerCase().includes('ville'));
-    const isAdmin = req.user.role === 'admin' || req.user.email === 'johan.mallet@liliwatt.fr' || req.user.email === 'kevin.moreau@liliwatt.fr';
+    const userId = req.user.id;
+    const isAdmin = req.user.role === 'admin';
     const fSecteur = (req.query.secteur || '').toLowerCase();
     const fVille = (req.query.ville || '').toLowerCase();
     const fStatut = (req.query.statut || '').toLowerCase();
     const fSearch = (req.query.search || '').toLowerCase();
 
-    const prospects = [];
-    for (let i = 1; i < rows.length && prospects.length < 100; i++) {
-      const row = rows[i];
-      const attr = vendeurCol >= 0 ? (row[vendeurCol] || '').trim() : '';
-      // Exclure HORS_POOL (sauf admin avec filtre spécial)
-      if (attr === 'HORS_POOL' && !req.query.hors_pool) continue;
-      // Vendeur : ses fiches + fiches non attribuées
-      if (!isAdmin && attr && attr.toLowerCase() !== req.user.email.toLowerCase()) continue;
-      // Filtres
-      if (fSecteur && secteurCol >= 0 && !(row[secteurCol] || '').toLowerCase().includes(fSecteur)) continue;
-      if (fVille && villeCol >= 0 && !(row[villeCol] || '').toLowerCase().includes(fVille)) continue;
-      if (fStatut) {
-        const st = statutCol >= 0 ? (row[statutCol] || '') : '';
-        if (fStatut === 'non_traite' && st) continue;
-        else if (fStatut !== 'non_traite' && st.toLowerCase() !== fStatut) continue;
-      }
-      if (fSearch) {
-        const hay = row.join(' ').toLowerCase();
-        if (!hay.includes(fSearch)) continue;
-      }
-      const obj = { _row: i + 1 };
-      headers.forEach((h, j) => { obj[h] = row[j] || ''; });
-      obj._attribue = attr.toLowerCase() === req.user.email.toLowerCase() || (isAdmin && !!attr);
-      prospects.push(obj);
+    // Build where clause
+    const where = { source: { in: ['BRUTE', 'MANUELLE'] } };
+    if (!isAdmin) {
+      where.OR = [{ vendeurId: userId }, { vendeurId: null }];
     }
-    // Secteurs et villes uniques pour les dropdowns
-    const secteurs = [...new Set(rows.slice(1).map(r => secteurCol >= 0 ? r[secteurCol] || '' : '').filter(Boolean))];
-    const villes = [...new Set(rows.slice(1).map(r => villeCol >= 0 ? r[villeCol] || '' : '').filter(Boolean))];
-    res.json({ success: true, prospects, secteurs, villes });
+    if (fSecteur) where.secteur = { contains: fSecteur, mode: 'insensitive' };
+    if (fVille) where.ville = { contains: fVille, mode: 'insensitive' };
+    if (fStatut === 'non_traite') {
+      where.statutAppel = null;
+    } else if (fStatut) {
+      const statutMap = { 'a appeler':'A_APPELER','appele':'APPELE','interesse':'INTERESSE','attente de documents':'ATTENTE_DOCUMENTS',
+        'dossier recu':'DOSSIER_RECU','a rappeler':'A_RAPPELER','pas interesse':'PAS_INTERESSE','faux numero':'FAUX_NUMERO',
+        'ne repond pas':'NE_REPOND_PAS','client signe':'CLIENT_SIGNE' };
+      where.statutAppel = statutMap[fStatut] || undefined;
+    }
+    if (fSearch) {
+      where.raisonSociale = { contains: fSearch, mode: 'insensitive' };
+    }
+
+    const prospects = await prisma.prospect.findMany({
+      where,
+      orderBy: [{ vendeurId: 'desc' }, { createdAt: 'desc' }],
+      take: 100,
+    });
+
+    // Map to frontend-compatible format (keep _row as id for backwards compat)
+    const mapped = prospects.map(p => ({
+      _row: p.id, // frontend uses _row as identifier
+      id: p.id,
+      place_id: p.placeId,
+      raison_sociale: p.raisonSociale,
+      adresse: p.adresse || '',
+      ville: p.ville || '',
+      secteur: p.secteur || '',
+      telephone: p.telephone || '',
+      site_web: p.siteWeb || '',
+      note_google: p.noteGoogle || '',
+      nb_avis: p.nbAvis || '',
+      vendeur_attribue: p.vendeurId ? req.user.email : '',
+      statut_appel: p.statutAppel ? p.statutAppel.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : '',
+      note_appel: p.noteAppel || '',
+      date_rappel: p.dateRappel || '',
+      rgpd_envoye: p.rgpdEnvoye ? 'oui' : '',
+      email_envoye_a: p.emailEnvoyeA || '',
+      date_dernier_appel: p.dateDernierAppel || '',
+      _attribue: p.vendeurId === userId || (isAdmin && !!p.vendeurId),
+    }));
+
+    // Secteurs et villes uniques for dropdowns
+    const allBrute = await prisma.prospect.findMany({
+      where: { source: { in: ['BRUTE', 'MANUELLE'] } },
+      select: { secteur: true, ville: true },
+      distinct: ['secteur', 'ville'],
+    });
+    const secteurs = [...new Set(allBrute.map(p => p.secteur).filter(Boolean))];
+    const villes = [...new Set(allBrute.map(p => p.ville).filter(Boolean))];
+
+    res.json({ success: true, prospects: mapped, secteurs, villes });
   } catch(e) { console.error('Brute error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
@@ -216,132 +250,156 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
   } catch(e) { console.error('💎 LEADS error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
-// ===== POST /api/prospects/prendre/:row =====
-app.post('/api/prospects/prendre/:row', verifyToken, async (req, res) => {
+// ===== POST /api/prospects/prendre/:id (Neon) =====
+app.post('/api/prospects/prendre/:id', verifyToken, async (req, res) => {
   try {
-    const sheet = req.body.sheet || 'BASE BRUTE';
-    const vendeurCol = await ensureColumn(sheet, 'vendeur_attribue');
-    const statutCol = await ensureColumn(sheet, 'statut_appel');
-    await updateCell(sheet, req.params.row, vendeurCol, req.user.email);
-    await updateCell(sheet, req.params.row, statutCol, 'À appeler');
-    console.log(`📌 Fiche ${req.params.row} prise par ${req.user.email}`);
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const prospect = await prisma.prospect.findUnique({
+      where: { id },
+      select: { id: true, vendeurId: true, raisonSociale: true, isVerrouillee: true }
+    });
+    if (!prospect) return res.status(404).json({ error: 'Prospect introuvable' });
+    if (prospect.isVerrouillee) return res.status(403).json({ error: 'Fiche verrouillee' });
+    if (prospect.vendeurId && prospect.vendeurId !== userId) return res.status(409).json({ error: 'Fiche deja attribuee' });
+
+    await prisma.prospect.update({
+      where: { id },
+      data: { vendeurId: userId, statutAppel: 'A_APPELER' }
+    });
+
+    await prisma.activityLog.create({
+      data: { userId, prospectId: id, type: 'ATTRIBUTION', metadata: { raisonSociale: prospect.raisonSociale } }
+    });
+
+    console.log(`📌 Fiche ${prospect.raisonSociale} prise par ${req.user.email}`);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('Prendre error:', e); res.status(500).json({ error: e.message }); }
 });
 
-// ===== POST /api/prospects/statut/:row =====
-app.post('/api/prospects/statut/:row', verifyToken, async (req, res) => {
+// ===== POST /api/prospects/statut/:id (Neon) =====
+app.post('/api/prospects/statut/:id', verifyToken, async (req, res) => {
   try {
+    const { id } = req.params;
     const { statut, note, date_rappel } = req.body;
-    const sheet = req.body.sheet || 'BASE BRUTE';
-    const isAdminUser = req.user.role === 'admin' || req.user.email === 'johan.mallet@liliwatt.fr' || req.user.email === 'kevin.moreau@liliwatt.fr';
-    const vendeurCol = await ensureColumn(sheet, 'vendeur_attribue');
+    const userId = req.user.id;
+    const isAdminUser = req.user.role === 'admin';
 
-    // Lire l'attribution actuelle
-    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
-    const cellRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: MASTER_SHEET_ID, range: `'${sheet}'!${colLetter(vendeurCol)}${req.params.row}`
+    const statutMap = {
+      'À appeler':'A_APPELER','A appeler':'A_APPELER','Appelé':'APPELE','Appele':'APPELE',
+      'Intéressé':'INTERESSE','Interesse':'INTERESSE','Attente de documents':'ATTENTE_DOCUMENTS',
+      'Dossier reçu':'DOSSIER_RECU','Dossier recu':'DOSSIER_RECU','À rappeler':'A_RAPPELER',
+      'A rappeler':'A_RAPPELER','Pas intéressé':'PAS_INTERESSE','Pas interesse':'PAS_INTERESSE',
+      'Faux numéro':'FAUX_NUMERO','Faux numero':'FAUX_NUMERO',
+      'Ne répond pas':'NE_REPOND_PAS','Ne repond pas':'NE_REPOND_PAS',
+      'Client signé':'CLIENT_SIGNE','Client signe':'CLIENT_SIGNE'
+    };
+    const statutEnum = statutMap[statut] || statut;
+
+    const prospect = await prisma.prospect.findUnique({
+      where: { id },
+      select: { id: true, vendeurId: true, raisonSociale: true, isVerrouillee: true }
     });
-    const currentAttr = ((cellRes.data.values || [[]])[0][0] || '').trim();
-
-    // Vérif : si attribué à un autre vendeur → refuser
-    if (currentAttr && currentAttr !== 'HORS_POOL' && currentAttr.toLowerCase() !== req.user.email.toLowerCase() && !isAdminUser) {
-      return res.status(403).json({ error: 'Fiche attribuée à un autre vendeur' });
+    if (!prospect) return res.status(404).json({ error: 'Prospect introuvable' });
+    if (prospect.vendeurId && prospect.vendeurId !== userId && !isAdminUser) {
+      return res.status(403).json({ error: 'Fiche attribuee a un autre vendeur' });
     }
+
+    const data = {
+      statutAppel: statutEnum,
+      dateDernierAppel: new Date(),
+    };
+    if (note !== undefined) data.noteAppel = note;
+    if (date_rappel) data.dateRappel = new Date(date_rappel);
 
     // Auto-attribution si fiche libre
-    if (!currentAttr || currentAttr === '') {
-      await updateCell(sheet, req.params.row, vendeurCol, req.user.email);
+    if (!prospect.vendeurId) data.vendeurId = userId;
+
+    // Regles metier
+    if (statutEnum === 'PAS_INTERESSE') {
+      if (!prospect.isVerrouillee) data.vendeurId = null;
+    } else if (statutEnum === 'FAUX_NUMERO') {
+      data.vendeurId = null;
+      data.telephone = null;
     }
 
-    // Règles métier par statut
-    if (statut === 'Pas intéressé') {
-      // Libérer la fiche
-      await updateCell(sheet, req.params.row, vendeurCol, '');
-    } else if (statut === 'Faux numéro') {
-      // Sortir du pool
-      await updateCell(sheet, req.params.row, vendeurCol, 'HORS_POOL');
-    } else if (statut === 'Client signé') {
-      // Reste définitivement au vendeur — ne repart jamais
-      if (!currentAttr || currentAttr === '') {
-        await updateCell(sheet, req.params.row, vendeurCol, req.user.email);
-      }
-    }
+    await prisma.prospect.update({ where: { id }, data });
 
-    if (statut) {
-      const col = await ensureColumn(sheet, 'statut_appel');
-      await updateCell(sheet, req.params.row, col, statut);
-    }
-    if (note !== undefined) {
-      const col = await ensureColumn(sheet, 'note_appel');
-      await updateCell(sheet, req.params.row, col, note);
-    }
-    if (date_rappel) {
-      const col = await ensureColumn(sheet, 'date_rappel');
-      await updateCell(sheet, req.params.row, col, date_rappel);
-    }
-    // Historique
-    const histCol = await ensureColumn(sheet, 'date_dernier_appel');
-    await updateCell(sheet, req.params.row, histCol, new Date().toLocaleString('fr-FR'));
-    console.log(`📞 Fiche ${req.params.row}: ${statut} par ${req.user.email}`);
+    await prisma.activityLog.create({
+      data: { userId, prospectId: id, type: 'STATUS_CHANGE', metadata: { newStatut: statutEnum, note: note ? note.substring(0, 100) : undefined } }
+    });
+
+    console.log(`📞 ${prospect.raisonSociale}: ${statutEnum} par ${req.user.email}`);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('Statut error:', e); res.status(500).json({ error: e.message }); }
 });
 
-// ===== POST /api/prospects/mail/:row =====
-app.post('/api/prospects/mail/:row', verifyToken, async (req, res) => {
+// ===== POST /api/prospects/mail/:id (Neon — RGPD email via Zoho SMTP) =====
+app.post('/api/prospects/mail/:id', verifyToken, async (req, res) => {
   try {
     const { email_destinataire, nom_gerant } = req.body;
     if (!email_destinataire) return res.status(400).json({ error: 'Email requis' });
+
+    // Get vendor's Zoho SMTP credentials from Neon
+    const vendeurUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: { credentials: { where: { serviceName: 'ZOHO' }, select: { login: true, passwordEncrypted: true } } }
+    });
+    const zohoLogin = vendeurUser?.credentials[0]?.login || req.user.email;
+    const zohoPass = vendeurUser?.credentials[0]?.passwordEncrypted || '';
+    if (!zohoPass) return res.status(400).json({ error: 'Credentials Zoho non configurees' });
+
     const rgpdLink = `https://liliwatt-courtier.onrender.com/rgpd/${req.user.token_rgpd}`;
     const vendeurNom = `${req.user.prenom} ${req.user.nom_famille}`;
 
     const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
 <div style="background:linear-gradient(135deg,#1e1b4b,#7c3aed);padding:28px;border-radius:12px 12px 0 0;text-align:center;">
 <h1 style="color:#fff;font-size:26px;font-weight:800;letter-spacing:3px;margin:0;">LILIWATT</h1>
-<p style="color:rgba(255,255,255,.7);font-size:11px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px;">Courtage Énergie B2B & B2C</p>
+<p style="color:rgba(255,255,255,.7);font-size:11px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px;">Courtage Energie B2B & B2C</p>
 </div>
 <div style="background:#f5f3ff;padding:32px;border-radius:0 0 12px 12px;">
 <p style="font-size:15px;color:#1e1b4b;">Bonjour${nom_gerant ? ' ' + nom_gerant : ''},</p>
-<p style="color:#374151;line-height:1.7;">Suite à notre entretien téléphonique, je me permets de vous transmettre ce lien afin de réaliser votre étude énergétique <strong>gratuite et sans engagement</strong>.</p>
+<p style="color:#374151;line-height:1.7;">Suite a notre entretien telephonique, je me permets de vous transmettre ce lien afin de realiser votre etude energetique <strong>gratuite et sans engagement</strong>.</p>
 <p style="color:#374151;line-height:1.7;">Merci de bien vouloir nous faire parvenir :</p>
 <ul style="color:#374151;line-height:2;">
-<li>Une <strong>facture hiver</strong> et une <strong>facture été</strong> d'électricité</li>
+<li>Une <strong>facture hiver</strong> et une <strong>facture ete</strong> d'electricite</li>
 <li>Si vous consommez du gaz, une <strong>facture de gaz</strong></li>
 </ul>
 <div style="text-align:center;margin:28px 0;">
 <a href="${rgpdLink}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;padding:16px 40px;border-radius:50px;text-decoration:none;font-weight:700;font-size:15px;">Transmettre mes factures</a>
 </div>
-<p style="color:#374151;">Je reste à votre disposition pour tout renseignement.</p>
+<p style="color:#374151;">Je reste a votre disposition pour tout renseignement.</p>
 <p style="color:#374151;">Cordialement,</p>
 <div style="margin-top:20px;padding-top:16px;border-top:2px solid #e9d5ff;">
 <strong style="color:#1e1b4b;">${vendeurNom}</strong><br>
-<span style="color:#7c3aed;font-size:12px;">LILIWATT — Courtage Énergie</span><br>
+<span style="color:#7c3aed;font-size:12px;">LILIWATT — Courtage Energie</span><br>
 <span style="font-size:12px;color:#6b7280;">${req.user.email}</span>
 </div>
 </div></div>`;
 
-    // Envoyer via Zoho SMTP
-    console.log(`📧 SMTP user: ${req.user.email} | pass length: ${(req.user.mdp||'').length} | to: ${email_destinataire}`);
     const transporter = nodemailer.createTransport({
       host: 'smtp.zoho.eu', port: 465, secure: true,
-      auth: { user: req.user.email, pass: req.user.mdp }
+      auth: { user: zohoLogin, pass: zohoPass }
     });
     await transporter.sendMail({
-      from: `"${vendeurNom} — LILIWATT" <${req.user.email}>`,
+      from: `"${vendeurNom} — LILIWATT" <${zohoLogin}>`,
       to: email_destinataire,
-      subject: `Suite à notre entretien — Étude énergétique LILIWATT`,
+      subject: `Suite a notre entretien — Etude energetique LILIWATT`,
       html
     });
 
-    // Marquer rgpd_envoye dans Sheets
-    const sheet = req.body.sheet || 'BASE BRUTE';
-    const col = await ensureColumn(sheet, 'rgpd_envoye');
-    await updateCell(sheet, req.params.row, col, 'oui');
-    const col2 = await ensureColumn(sheet, 'email_envoye_a');
-    await updateCell(sheet, req.params.row, col2, email_destinataire);
+    // Marquer rgpd_envoye dans Neon
+    await prisma.prospect.update({
+      where: { id: req.params.id },
+      data: { rgpdEnvoye: true, emailEnvoyeA: email_destinataire }
+    });
 
-    console.log(`📧 Mail RGPD envoyé à ${email_destinataire} par ${req.user.email}`);
+    await prisma.activityLog.create({
+      data: { userId: req.user.id, prospectId: req.params.id, type: 'RGPD_SENT', metadata: { to: email_destinataire } }
+    });
+
+    console.log(`📧 Mail RGPD envoye a ${email_destinataire} par ${req.user.email}`);
     res.json({ success: true });
   } catch(e) {
     console.error('Mail error:', e.message);
@@ -349,38 +407,34 @@ app.post('/api/prospects/mail/:row', verifyToken, async (req, res) => {
   }
 });
 
-// ===== GET /api/kpis =====
+// ===== GET /api/kpis (Neon) =====
 app.get('/api/kpis', verifyToken, async (req, res) => {
   try {
-    const rows = await getSheetData('BASE BRUTE');
-    if (rows.length < 2) return res.json({ success: true, kpis: { total: 0, appels: 0, interesses: 0, rappels: 0, rgpd: 0 }, historique: [] });
-    const headers = rows[0];
-    const vendeurCol = headers.findIndex(h => h.toLowerCase().includes('vendeur_attribue'));
-    const statutCol = headers.findIndex(h => h.toLowerCase().includes('statut_appel'));
-    const rgpdCol = headers.findIndex(h => h.toLowerCase().includes('rgpd_envoye'));
-    const dateCol = headers.findIndex(h => h.toLowerCase().includes('date_dernier_appel'));
-    const nomCol = headers.findIndex(h => h.toLowerCase().includes('raison_sociale'));
+    const userId = req.user.id;
+    const myProspects = await prisma.prospect.findMany({
+      where: { vendeurId: userId, source: { in: ['BRUTE', 'MANUELLE'] } },
+      select: { id: true, raisonSociale: true, statutAppel: true, rgpdEnvoye: true, dateDernierAppel: true },
+      orderBy: { dateDernierAppel: 'desc' },
+    });
 
-    let total = 0, appels = 0, interesses = 0, rappels = 0, rgpd = 0;
-    const historique = [];
+    const total = myProspects.length;
+    const appels = myProspects.filter(p => p.statutAppel && p.statutAppel !== 'A_APPELER').length;
+    const interesses = myProspects.filter(p => p.statutAppel === 'INTERESSE').length;
+    const rappels = myProspects.filter(p => p.statutAppel === 'A_RAPPELER').length;
+    const rgpd = myProspects.filter(p => p.rgpdEnvoye).length;
 
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      if (vendeurCol < 0 || (row[vendeurCol] || '').toLowerCase() !== req.user.email.toLowerCase()) continue;
-      total++;
-      const st = statutCol >= 0 ? (row[statutCol] || '') : '';
-      if (st && st !== 'À appeler') appels++;
-      if (st.toLowerCase().includes('intéressé') || st.toLowerCase().includes('interesse')) interesses++;
-      if (st.toLowerCase().includes('rappeler')) rappels++;
-      if (rgpdCol >= 0 && (row[rgpdCol] || '').toLowerCase() === 'oui') rgpd++;
-      if (dateCol >= 0 && row[dateCol]) {
-        historique.push({ date: row[dateCol], nom: nomCol >= 0 ? row[nomCol] || '' : '', statut: st, row: i + 1 });
-      }
-    }
+    const historique = myProspects
+      .filter(p => p.dateDernierAppel)
+      .slice(0, 10)
+      .map(p => ({
+        date: p.dateDernierAppel ? new Date(p.dateDernierAppel).toLocaleString('fr-FR') : '',
+        nom: p.raisonSociale,
+        statut: p.statutAppel || '',
+        row: p.id,
+      }));
 
-    historique.sort((a, b) => b.date.localeCompare(a.date));
-    res.json({ success: true, kpis: { total, appels, interesses, rappels, rgpd }, historique: historique.slice(0, 10) });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+    res.json({ success: true, kpis: { total, appels, interesses, rappels, rgpd }, historique });
+  } catch(e) { console.error('KPIs error:', e); res.status(500).json({ error: e.message }); }
 });
 
 // ===== ADMIN STATS =====
