@@ -335,7 +335,7 @@ app.post('/api/prospects/mail/:id', verifyToken, async (req, res) => {
     if (!email_destinataire) return res.status(400).json({ error: 'Email requis' });
 
     const zohoCred = await prisma.credential.findFirst({
-      where: { userId: req.user.id, serviceName: 'ZOHO' },
+      where: { userId: req.user.id, serviceName: 'Zoho Mail' },
       select: { login: true, passwordEncrypted: true }
     });
     const zohoLogin = zohoCred?.login || req.user.email;
