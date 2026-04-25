@@ -1,0 +1,509 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AnnouncementRead {
+  id                   String               @id
+  announcementId       String
+  userId               String
+  readAt               DateTime             @default(now())
+  ReferentAnnouncement ReferentAnnouncement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  User                 User                 @relation(fields: [userId], references: [id])
+
+  @@unique([announcementId, userId])
+  @@index([userId])
+}
+
+model AudioFile {
+  id          String   @id
+  title       String
+  category    String
+  description String?
+  driveFileId String
+  driveUrl    String
+  duration    Int?
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+  User        User     @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+
+  @@index([category])
+  @@index([createdAt])
+}
+
+model Availability {
+  id        String   @id
+  userId    String
+  date      DateTime
+  slotsJson String
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
+  @@index([userId])
+}
+
+model CalendarEvent {
+  id          String   @id
+  userId      String
+  title       String
+  description String?
+  eventType   String
+  color       String   @default("#3b82f6")
+  startTime   DateTime
+  endTime     DateTime
+  isAllDay    Boolean  @default(false)
+  attendeeIds String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([endTime])
+  @@index([startTime])
+  @@index([userId])
+}
+
+model Challenge {
+  id        String   @id
+  message   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+}
+
+model Credential {
+  id                String   @id
+  userId            String
+  serviceName       String
+  login             String
+  passwordEncrypted String
+  createdAt         DateTime @default(now())
+  User              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Declaration {
+  id        String   @id
+  type      String
+  userId    String
+  societe   String
+  details   Json?
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([type])
+  @@index([userId])
+}
+
+model Demande {
+  id             String    @id
+  type           String
+  status         String    @default("PENDING")
+  fromEmail      String
+  fromName       String
+  fromRole       String
+  targetEmail    String?
+  readByReferent Boolean   @default(false)
+  readAt         DateTime?
+  payload        String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime
+
+  @@index([fromEmail])
+  @@index([targetEmail, readByReferent])
+}
+
+model FictionalCourtier {
+  id                 String   @id
+  courtierNumber     Int      @unique
+  firstName          String
+  gender             String
+  age                Int
+  birthDate          DateTime
+  city               String
+  joinedAt           DateTime
+  personality        String
+  communicationStyle String
+  useTutoiement      Boolean  @default(true)
+  hasTypos           Boolean  @default(false)
+  typoRate           Float    @default(0.0)
+  isMorningPerson    Boolean  @default(false)
+  emojiUsage         String   @default("moderate")
+  affinitiesJson     String   @default("[]")
+  background         String
+  previousCompanies  String?
+  monthlyEarnings    Int
+  earningsHistory    String   @default("{}")
+  travelPlans        String?
+  lifeContext        String?
+  memoryJson         String   @default("{}")
+  lastActive         DateTime @default(now())
+  totalMessages      Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime
+
+  @@index([birthDate])
+  @@index([courtierNumber])
+  @@index([lastActive])
+}
+
+model Link {
+  id                             String   @id
+  scope                          String
+  title                          String
+  url                            String
+  teamReferentId                 String?
+  userId                         String?
+  createdAt                      DateTime @default(now())
+  order                          Int      @default(0)
+  icon                           String?  @default("🔗")
+  subtitle                       String?
+  User_Link_teamReferentIdToUser User?    @relation("Link_teamReferentIdToUser", fields: [teamReferentId], references: [id], onDelete: Cascade)
+  User_Link_userIdToUser         User?    @relation("Link_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([scope])
+  @@index([teamReferentId])
+  @@index([userId])
+}
+
+model Message {
+  id                            String    @id
+  fromUserId                    String
+  toUserId                      String
+  body                          String
+  category                      String?
+  createdAt                     DateTime  @default(now())
+  readAt                        DateTime?
+  User_Message_fromUserIdToUser User      @relation("Message_fromUserIdToUser", fields: [fromUserId], references: [id], onDelete: Cascade)
+  User_Message_toUserIdToUser   User      @relation("Message_toUserIdToUser", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@index([category])
+  @@index([fromUserId])
+  @@index([toUserId])
+}
+
+model Notification {
+  id        String   @id
+  userId    String
+  kind      String
+  entityId  String
+  isRead    Boolean  @default(false)
+  metadata  String?
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isRead])
+  @@index([userId])
+}
+
+model Quiz {
+  id             String         @id
+  moduleId       String         @unique
+  questions      Json
+  passMark       Int            @default(4)
+  createdAt      DateTime       @default(now())
+  TrainingModule TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+}
+
+model QuizResult {
+  id             String         @id
+  userId         String
+  moduleId       String
+  score          Int
+  total          Int
+  passed         Boolean
+  answers        Json
+  createdAt      DateTime       @default(now())
+  TrainingModule TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  User           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([moduleId])
+  @@index([userId])
+}
+
+model ReferentAnnouncement {
+  id               String             @id
+  referentId       String
+  title            String
+  message          String
+  createdAt        DateTime           @default(now())
+  AnnouncementRead AnnouncementRead[]
+  User             User               @relation(fields: [referentId], references: [id])
+
+  @@index([createdAt])
+  @@index([referentId])
+}
+
+model Request {
+  id                            String   @id
+  type                          String
+  userId                        String
+  referentId                    String
+  vendorId                      String?
+  status                        String   @default("NEW")
+  payloadJson                   String
+  createdAt                     DateTime @default(now())
+  User_Request_referentIdToUser User     @relation("Request_referentIdToUser", fields: [referentId], references: [id], onDelete: Cascade)
+  User_Request_userIdToUser     User     @relation("Request_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
+  User_Request_vendorIdToUser   User?    @relation("Request_vendorIdToUser", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([referentId])
+  @@index([status])
+  @@index([type])
+  @@index([userId])
+  @@index([vendorId])
+}
+
+model TeamActivity {
+  id                      String         @id
+  type                    String
+  amount                  Int?
+  message                 String?
+  courtierNumber          Int?
+  mentionedCourtierNumber Int?
+  authorRole              String?
+  authorName              String?
+  fictionalFirstName      String?
+  isManual                Boolean        @default(false)
+  isFictional             Boolean        @default(false)
+  replyToId               String?
+  createdAt               DateTime       @default(now())
+  TeamActivity            TeamActivity?  @relation("TeamActivityToTeamActivity", fields: [replyToId], references: [id])
+  other_TeamActivity      TeamActivity[] @relation("TeamActivityToTeamActivity")
+
+  @@index([courtierNumber])
+  @@index([createdAt])
+  @@index([mentionedCourtierNumber])
+  @@index([replyToId])
+  @@index([type])
+}
+
+model TrainingModule {
+  id                String             @id
+  title             String
+  description       String
+  content           String
+  order             Int
+  durationEstimated Int                @default(30)
+  icon              String             @default("bi-book")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime
+  Quiz              Quiz?
+  QuizResult        QuizResult[]
+  TrainingProgress  TrainingProgress[]
+
+  @@index([order])
+}
+
+model TrainingProgress {
+  id                                     String         @id
+  sellerId                               String
+  moduleId                               String
+  status                                 String         @default("LOCKED")
+  unlockedBy                             String?
+  unlockedAt                             DateTime?
+  startedAt                              DateTime?
+  completedAt                            DateTime?
+  score                                  Int?
+  internalNote                           String?
+  createdAt                              DateTime       @default(now())
+  updatedAt                              DateTime
+  TrainingModule                         TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  User_TrainingProgress_sellerIdToUser   User           @relation("TrainingProgress_sellerIdToUser", fields: [sellerId], references: [id], onDelete: Cascade)
+  User_TrainingProgress_unlockedByToUser User?          @relation("TrainingProgress_unlockedByToUser", fields: [unlockedBy], references: [id])
+
+  @@unique([sellerId, moduleId])
+  @@index([moduleId])
+  @@index([sellerId])
+  @@index([status])
+}
+
+model User {
+  id                                                 String                 @id
+  email                                              String                 @unique
+  firstName                                          String?
+  lastName                                           String?
+  phone                                              String?
+  passwordHash                                       String
+  role                                               String
+  specialty                                          String?
+  referentId                                         String?
+  avatar                                             String?
+  courtierNumber                                     Int?                   @unique
+  createdAt                                          DateTime               @default(now())
+  isActive                                           Boolean                @default(true)
+  isAvailable                                        Boolean?
+  lastSeen                                           DateTime?
+  deletedAt                                          DateTime?
+  linkVisio                                          String?
+  lastMessagesVisit                                  DateTime?
+  lastPerformancesVisit                              DateTime?
+  AnnouncementRead                                   AnnouncementRead[]
+  AudioFile                                          AudioFile[]
+  Availability                                       Availability[]
+  CalendarEvent                                      CalendarEvent[]
+  Credential                                         Credential[]
+  Declaration                                        Declaration[]
+  Link_Link_teamReferentIdToUser                     Link[]                 @relation("Link_teamReferentIdToUser")
+  Link_Link_userIdToUser                             Link[]                 @relation("Link_userIdToUser")
+  Message_Message_fromUserIdToUser                   Message[]              @relation("Message_fromUserIdToUser")
+  Message_Message_toUserIdToUser                     Message[]              @relation("Message_toUserIdToUser")
+  Notification                                       Notification[]
+  QuizResult                                         QuizResult[]
+  ReferentAnnouncement                               ReferentAnnouncement[]
+  Request_Request_referentIdToUser                   Request[]              @relation("Request_referentIdToUser")
+  Request_Request_userIdToUser                       Request[]              @relation("Request_userIdToUser")
+  Request_Request_vendorIdToUser                     Request[]              @relation("Request_vendorIdToUser")
+  TrainingProgress_TrainingProgress_sellerIdToUser   TrainingProgress[]     @relation("TrainingProgress_sellerIdToUser")
+  TrainingProgress_TrainingProgress_unlockedByToUser TrainingProgress[]     @relation("TrainingProgress_unlockedByToUser")
+  User                                               User?                  @relation("UserToUser", fields: [referentId], references: [id])
+  other_User                                         User[]                 @relation("UserToUser")
+
+  // Prospection
+  prospectsAttribues                                  Prospect[]             @relation("VendeurProspects")
+  workSessions                                       WorkSession[]          @relation("UserWorkSessions")
+  userActivities                                     ActivityLog[]          @relation("UserActivities")
+
+  @@index([email])
+  @@index([referentId])
+}
+
+// =============================================
+// LILIWATT PROSPECTION — Tables ajoutées
+// =============================================
+
+enum ProspectSource {
+  BRUTE
+  PREMIUM
+  PREMIUM_SIGNED
+  MANUELLE
+}
+
+enum StatutAppel {
+  A_APPELER
+  APPELE
+  INTERESSE
+  ATTENTE_DOCUMENTS
+  DOSSIER_RECU
+  A_RAPPELER
+  PAS_INTERESSE
+  FAUX_NUMERO
+  NE_REPOND_PAS
+  CLIENT_SIGNE
+}
+
+enum ActivityType {
+  LOGIN
+  LOGOUT
+  ATTRIBUTION
+  STATUS_CHANGE
+  CALL
+  RGPD_SENT
+  INVOICE_RECEIVED
+  SALE_SIGNED
+  PROSPECT_CREATED_MANUAL
+  REATTRIBUTION_ADMIN
+}
+
+model Prospect {
+  id                  String         @id @default(cuid())
+
+  source              ProspectSource @default(BRUTE)
+  placeId             String?        @unique
+  siren               String?
+
+  raisonSociale       String
+  adresse             String?
+  ville               String?
+  codePostal          String?
+  secteur             String?
+
+  telephone           String?
+  email               String?
+  siteWeb             String?
+  signataire          String?
+
+  noteGoogle          Float?
+  nbAvis              Int?
+
+  score               Float?
+  payRank             Int?
+  volumeTotal         Float?
+  dateDebutLivraison  DateTime?
+  dateFinLivraison    DateTime?
+  energie             String?
+  segment             String?
+  statutOhm           String?
+  pdls                String?
+  nbPdl               Int?
+  margeCourtier       Float?
+  courtierFinal       String?
+
+  vendeurId           String?
+  vendeur             User?          @relation("VendeurProspects", fields: [vendeurId], references: [id])
+
+  statutAppel         StatutAppel?
+  noteAppel           String?
+  dateRappel          DateTime?
+  rgpdEnvoye          Boolean        @default(false)
+  emailEnvoyeA        String?
+  dateDernierAppel    DateTime?
+
+  isManuelle          Boolean        @default(false)
+  isVerrouillee       Boolean        @default(false)
+  sourceManuelle      String?
+
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  historique          Json?
+
+  activities          ActivityLog[]
+
+  @@index([vendeurId])
+  @@index([statutAppel])
+  @@index([source])
+  @@index([ville])
+  @@index([codePostal])
+  @@index([dateFinLivraison])
+  @@index([siren])
+}
+
+model WorkSession {
+  id               String        @id @default(cuid())
+  userId           String
+  user             User          @relation("UserWorkSessions", fields: [userId], references: [id])
+  startedAt        DateTime      @default(now())
+  endedAt          DateTime?
+  durationMinutes  Int?
+  date             DateTime      @db.Date
+
+  activities       ActivityLog[]
+
+  @@index([userId, date])
+  @@index([date])
+}
+
+model ActivityLog {
+  id               String        @id @default(cuid())
+  userId           String
+  user             User          @relation("UserActivities", fields: [userId], references: [id])
+  workSessionId    String?
+  workSession      WorkSession?  @relation(fields: [workSessionId], references: [id])
+  prospectId       String?
+  prospect         Prospect?     @relation(fields: [prospectId], references: [id])
+  type             ActivityType
+  timestamp        DateTime      @default(now())
+  metadata         Json?
+
+  @@index([userId, timestamp])
+  @@index([prospectId])
+  @@index([type])
+  @@index([workSessionId])
+}
