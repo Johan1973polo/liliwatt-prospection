@@ -386,10 +386,10 @@ function renderCards(prospects, div, sheet){
 
     let buttons='';
     if(isMine||isAdmin()){
-      buttons='<button class="btn btn-sm" onclick="openStatut('+p._row+',\''+sheet+'\',\''+esc(p.raison_sociale)+'\',\''+esc(p.statut_appel||'')+'\',\''+esc(p.note_appel||'')+'\')">✏️ Statut</button>' +
-        '<button class="btn btn-sm btn-pink" onclick="openMail('+p._row+',\''+sheet+'\',\''+esc(p.raison_sociale)+'\')">📧 Mail RGPD</button>';
+      buttons='<button class="btn btn-sm" onclick="openStatut(\''+p._row+'\',\''+sheet+'\',\''+esc(p.raison_sociale)+'\',\''+esc(p.statut_appel||'')+'\',\''+esc(p.note_appel||'')+'\')">✏️ Statut</button>' +
+        '<button class="btn btn-sm btn-pink" onclick="openMail(\''+p._row+'\',\''+sheet+'\',\''+esc(p.raison_sociale)+'\')">📧 Mail RGPD</button>';
     } else if(!attr){
-      buttons='<button class="btn btn-sm btn-outline" onclick="openConsult('+p._row+',\''+sheet+'\')">👁 Consulter</button>';
+      buttons='<button class="btn btn-sm btn-outline" onclick="openConsult(\''+p._row+'\',\''+sheet+'\')">👁 Consulter</button>';
     }
 
     // Rendu Premium (LEADS OHM) vs Base Brute
@@ -421,6 +421,8 @@ function renderCards(prospects, div, sheet){
       infoLines +
       '</div><div style="display:flex;gap:4px;flex-wrap:wrap;flex-direction:column;align-items:flex-end;">'+scoreBadge+segBadge+stBadge+attrBadge+'</div></div>' +
       (isPremium ? '' : '<div class="tel">📞 '+tel+'</div>') +
+      (p.vendeur_nom && (isAdmin() || (user && user.role === 'referent')) ? '<div style="margin-top:4px;padding:4px 10px;background:#f3e8ff;border-radius:8px;font-size:12px;color:#7c3aed;">👤 <strong>'+p.vendeur_nom+'</strong></div>' : '') +
+      (p.isVerrouillee ? '<div style="margin-top:2px;font-size:11px;color:#dc2626;">🔒 Fiche verrouillee</div>' : '') +
       '<div class="actions">'+buttons+'</div></div>';
   }).join('');
 }
@@ -665,7 +667,7 @@ async function searchLeads(page) {
           '<td style="padding:4px 6px;">'+(p.date_fin_livraison||'—')+'</td>' +
           '<td style="padding:4px 6px;color:'+(attr?'#22c55e':'#9ca3af')+';">'+(attr?attr.split('@')[0]:'—')+'</td>' +
           '<td style="padding:4px 6px;"><button onclick="showFichePremium('+i+')" style="background:none;border:none;cursor:pointer;font-size:14px;">👁</button>' +
-          (attr ? '<button onclick="retirerLead('+p._row+')" style="background:#fef2f2;color:#dc2626;border:none;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;margin-left:4px;font-weight:600;">✖</button>' : '') +
+          (attr ? '<button onclick="retirerLead(\''+p._row+'\')" style="background:#fef2f2;color:#dc2626;border:none;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;margin-left:4px;font-weight:600;">✖</button>' : '') +
           '</td></tr>';
       }).join('') + '</tbody></table></div>';
     // Pagination
@@ -749,7 +751,7 @@ async function loadAttribuees() {
           '<td style="padding:4px 6px;">'+(p.date_fin_livraison||'—')+'</td>' +
           '<td style="padding:4px 6px;font-size:10px;">'+(p.statut_appel||'—')+'</td>' +
           '<td style="padding:4px 6px;color:#22c55e;font-weight:600;">'+(p.vendeur_attribue||'').split('@')[0]+'</td>' +
-          '<td style="padding:4px 6px;"><button onclick="retirerLead('+p._row+')" style="background:#fef2f2;color:#dc2626;border:none;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer;font-weight:600;">✖ Retirer</button></td></tr>';
+          '<td style="padding:4px 6px;"><button onclick="retirerLead(\''+p._row+'\')" style="background:#fef2f2;color:#dc2626;border:none;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer;font-weight:600;">✖ Retirer</button></td></tr>';
       }).join('') + '</tbody></table>';
   } catch(e) { div.innerHTML = '<p style="color:#ef4444;">Erreur</p>'; }
 }

@@ -84,10 +84,16 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
     if (isAdmin) {
       // Admin voit tout
     } else if (req.user.role === 'referent') {
-      // Referent voit ses vendeurs + libres
-      const mesVendeurs = await prisma.user.findMany({ where: { referentId: userId, isActive: true }, select: { id: true } });
+      // Referent voit ses vendeurs + vendeurs de ses sous-referents + libres
+      const sousRefs = await prisma.user.findMany({ where: { referentId: userId, role: 'REFERENT', isActive: true }, select: { id: true } });
+      const sousRefIds = sousRefs.map(r => r.id);
+      const mesVendeurs = await prisma.user.findMany({
+        where: { isActive: true, OR: [{ referentId: userId }, ...(sousRefIds.length ? [{ referentId: { in: sousRefIds } }] : [])] },
+        select: { id: true }
+      });
       const ids = mesVendeurs.map(v => v.id);
       ids.push(userId);
+      sousRefIds.forEach(id => ids.push(id));
       where.OR = [{ vendeurId: { in: ids } }, { vendeurId: null }];
     } else {
       // Vendeur : ses fiches + libres
@@ -122,6 +128,7 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
       date_dernier_appel: p.dateDernierAppel || '',
       _attribue: p.vendeurId === userId || (isAdmin && !!p.vendeurId),
       isManuelle: p.isManuelle, isVerrouillee: p.isVerrouillee,
+      vendeur_nom: p.vendeur ? `${p.vendeur.firstName || ''} ${p.vendeur.lastName || ''}`.trim() : '',
     }));
 
     const allBrute = await prisma.prospect.findMany({
@@ -138,10 +145,31 @@ app.get('/api/prospects/brute', verifyToken, async (req, res) => {
 app.get('/api/prospects/leads', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
+    const role = req.user.role;
+
+    let vendeurFilter;
+    if (role === 'admin') {
+      vendeurFilter = { not: null };
+    } else if (role === 'referent') {
+      const sousRefs = await prisma.user.findMany({ where: { referentId: userId, role: 'REFERENT', isActive: true }, select: { id: true } });
+      const sousRefIds = sousRefs.map(r => r.id);
+      const mesVendeurs = await prisma.user.findMany({
+        where: { isActive: true, OR: [{ referentId: userId }, ...(sousRefIds.length ? [{ referentId: { in: sousRefIds } }] : [])] },
+        select: { id: true }
+      });
+      const ids = mesVendeurs.map(v => v.id);
+      ids.push(userId);
+      sousRefIds.forEach(id => ids.push(id));
+      vendeurFilter = { in: ids };
+    } else {
+      vendeurFilter = userId;
+    }
+
     const items = await prisma.prospect.findMany({
-      where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: userId },
+      where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: vendeurFilter },
       orderBy: [{ dateFinLivraison: 'asc' }],
-      take: 200
+      take: 200,
+      include: { vendeur: { select: { email: true, firstName: true, lastName: true } } }
     });
 
     const prospects = items.map(p => ({
@@ -154,7 +182,8 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
       volume_total: p.volumeTotal || '',
       segments: p.segment || '', energie: p.energie || '',
       statut_appel: p.statutAppel || '', note_appel: p.noteAppel || '',
-      vendeur_attribue: req.user.email
+      vendeur_attribue: p.vendeur?.email || req.user.email,
+      vendeur_nom: p.vendeur ? `${p.vendeur.firstName || ''} ${p.vendeur.lastName || ''}`.trim() : '',
     }));
 
     console.log(`💎 LEADS pour ${req.user.email}: ${prospects.length} fiches`);
