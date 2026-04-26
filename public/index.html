@@ -138,6 +138,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
 .kpi-view-btn{padding:8px 16px;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;transition:all .15s}
 .kpi-view-btn.active{background:#1c1917!important;color:#fff!important}.kpi-view-btn:not(.active){background:transparent!important;color:#78716c!important}
 @media(max-width:900px){.leader-row{grid-template-columns:30px 1fr auto auto}}
+.favori-btn{background:none;border:none;cursor:pointer;font-size:20px;padding:4px 8px;transition:transform .15s;}.favori-btn:hover{transform:scale(1.2);}
 </style>
 </head>
 <body>
@@ -889,6 +890,7 @@ function updateMesFichesBadge(total){
 function renderMesFichesFiltres(counts,total){
   var filtres=[
     {key:'tous',label:'Toutes',count:total},
+    {key:'favoris',label:'⭐ Favoris',count:counts.favoris||0},
     {key:'A_APPELER',label:'📞 A appeler',count:counts.A_APPELER||0},
     {key:'A_RAPPELER',label:'🔄 A rappeler',count:counts.A_RAPPELER||0},
     {key:'INTERESSE',label:'🟢 Interesse',count:counts.INTERESSE||0},
@@ -911,10 +913,15 @@ function renderMesFichesList(prospects){
     var st=stl[p.statutAppel]||{l:'—',bg:'#f5f5f4',c:'#78716c'};
     var dr=p.dateRappel?'<span style="color:#b45309;font-weight:600;font-size:12px;">📅 Rappel: '+new Date(p.dateRappel).toLocaleDateString('fr-FR')+'</span>':'';
     var sb=p.source==='MANUELLE'?'<span style="background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;">🔒 MANUELLE</span>':(p.source==='PREMIUM'?'<span style="background:#fae8ff;color:#a21caf;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;">💎 PREMIUM</span>':'');
-    return '<div onclick="openFicheById(\''+p.id+'\')" style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px 20px;cursor:pointer;transition:all .15s;display:flex;justify-content:space-between;align-items:center;gap:16px;" onmouseover="this.style.borderColor=\'#7c3aed\';this.style.boxShadow=\'0 4px 12px rgba(124,58,237,.12)\'" onmouseout="this.style.borderColor=\'#e7e5e4\';this.style.boxShadow=\'none\'"><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><strong style="font-size:15px;color:#1c1917;">'+((p.raisonSociale||'—'))+'</strong>'+sb+'</div><div style="color:#78716c;font-size:13px;">'+(p.ville||'')+' '+(p.codePostal?'· '+p.codePostal:'')+(p.telephone?' · 📞 '+p.telephone:'')+'</div>'+dr+'</div><span style="background:'+st.bg+';color:'+st.c+';padding:6px 12px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap;">'+st.l+'</span></div>';
+    var fav=p.isFavori;
+    return '<div onclick="openFicheById(\''+p.id+'\')" style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px 20px;cursor:pointer;transition:all .15s;display:flex;justify-content:space-between;align-items:center;gap:12px;" onmouseover="this.style.borderColor=\'#7c3aed\';this.style.boxShadow=\'0 4px 12px rgba(124,58,237,.12)\'" onmouseout="this.style.borderColor=\'#e7e5e4\';this.style.boxShadow=\'none\'"><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><strong style="font-size:15px;color:#1c1917;">'+((p.raisonSociale||'—'))+'</strong>'+sb+'</div><div style="color:#78716c;font-size:13px;">'+(p.ville||'')+' '+(p.codePostal?'· '+p.codePostal:'')+(p.telephone?' · 📞 '+p.telephone:'')+'</div>'+dr+'</div><button onclick="event.stopPropagation();toggleFavori(\''+p.id+'\',this)" class="favori-btn" title="'+(fav?'Retirer des favoris':'Ajouter aux favoris')+'">'+(fav?'⭐':'☆')+'</button><span style="background:'+st.bg+';color:'+st.c+';padding:6px 12px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap;">'+st.l+'</span></div>';
   }).join('');
   // Store map for drawer
   window._mesFichesMap={};prospects.forEach(function(p){window._mesFichesMap[p.id]=p;});
+}
+async function toggleFavori(id,btn){
+  try{var r=await fetch('/api/prospects/'+id+'/toggle-favori',{method:'POST',headers:{'Authorization':'Bearer '+token}});var d=await r.json();
+  if(d.success){btn.innerText=d.isFavori?'⭐':'☆';loadMesFiches();}}catch(e){console.error(e);}
 }
 document.addEventListener('DOMContentLoaded',function(){
   var s=document.getElementById('mesFichesSearch');

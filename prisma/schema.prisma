@@ -458,6 +458,7 @@ model Prospect {
 
   isManuelle          Boolean        @default(false)
   isVerrouillee       Boolean        @default(false)
+  isFavori            Boolean        @default(false)
   sourceManuelle      String?
 
   createdAt           DateTime       @default(now())
