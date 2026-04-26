@@ -288,15 +288,17 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
       vendeurFilter = userId;
     }
 
-    const items = await prisma.prospect.findMany({
-      where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: vendeurFilter },
-      orderBy: [{ dateFinLivraison: 'asc' }],
-      take: 200,
-      include: { vendeur: { select: { email: true, firstName: true, lastName: true } } }
-    });
+    const { statut } = req.query;
+    const where = { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: vendeurFilter };
+    if (statut === 'favoris') where.isFavori = true;
+
+    const [items, favorisCount] = await Promise.all([
+      prisma.prospect.findMany({ where, orderBy: [{ dateFinLivraison: 'asc' }], take: 200, include: { vendeur: { select: { email: true, firstName: true, lastName: true } } } }),
+      prisma.prospect.count({ where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: vendeurFilter, isFavori: true } }),
+    ]);
 
     const prospects = items.map(p => ({
-      _row: p.id, _sheet: 'LEADS OHM', _attribue: true,
+      _row: p.id, id: p.id, _sheet: 'LEADS OHM', _attribue: true,
       raison_sociale: p.raisonSociale, siren: p.siren || '',
       signataire: p.signataire || '', email_signataire: p.email || '',
       tel_signataire: p.telephone || '', adresse: p.adresse || '',
@@ -307,10 +309,11 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
       statut_appel: p.statutAppel || '', note_appel: p.noteAppel || '',
       vendeur_attribue: p.vendeur?.email || req.user.email,
       vendeur_nom: p.vendeur ? `${p.vendeur.firstName || ''} ${p.vendeur.lastName || ''}`.trim() : '',
+      isFavori: p.isFavori || false,
     }));
 
     console.log(`💎 LEADS pour ${req.user.email}: ${prospects.length} fiches`);
-    res.json({ success: true, prospects });
+    res.json({ success: true, prospects, favorisCount });
   } catch(e) { console.error('Leads error:', e.message); res.status(500).json({ error: e.message }); }
 });
 

@@ -222,6 +222,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         <h3 style="color:#1e1b4b;">💎 Base Premium — Contacts attribués</h3>
         <button class="btn btn-sm" onclick="loadLeads()">🔄</button>
       </div>
+      <div id="leadsFiltres" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
       <div id="leadsList"><p style="color:#9ca3af;text-align:center;padding:20px;">Cliquez sur 🔄</p></div>
     </div>
 
@@ -568,13 +569,24 @@ async function loadBrute(){
   }catch(e){div.innerHTML='<p style="color:#ef4444;">Erreur réseau</p>';}
 }
 
-async function loadLeads(){
+var currentLeadsFilter='all';
+async function loadLeads(filter){
+  if(filter!==undefined)currentLeadsFilter=filter;
   const div=document.getElementById('leadsList');div.innerHTML='<p style="color:#9ca3af;text-align:center;padding:20px;">Chargement...</p>';
   try{
-    const r=await fetch('/api/prospects/leads',{headers:{'Authorization':'Bearer '+token}});
+    var url='/api/prospects/leads';
+    if(currentLeadsFilter==='favoris')url+='?statut=favoris';
+    const r=await fetch(url,{headers:{'Authorization':'Bearer '+token}});
     const d=await r.json();
+    // Render pills
+    var fc=d.favorisCount||0;var total=(d.prospects||[]).length;
+    var fl=document.getElementById('leadsFiltres');
+    if(fl){
+      var pills=[{k:'all',l:'Toutes',c:currentLeadsFilter==='all'?total:'-'},{k:'favoris',l:'⭐ Favoris',c:fc}];
+      fl.innerHTML=pills.map(function(p){var act=currentLeadsFilter===p.k;return '<button onclick="loadLeads(\''+p.k+'\')" style="padding:8px 14px;background:'+(act?'#1c1917':'#fff')+';color:'+(act?'#fff':'#44403c')+';border:1px solid #e7e5e4;border-radius:99px;cursor:pointer;font-weight:600;font-size:13px;">'+p.l+' ('+p.c+')</button>';}).join('');
+    }
     renderCards(d.prospects||[], div, 'LEADS OHM');
-  }catch(e){div.innerHTML='<p style="color:#ef4444;">Erreur réseau</p>';}
+  }catch(e){div.innerHTML='<p style="color:#ef4444;">Erreur reseau</p>';}
 }
 
 function renderCards(prospects, div, sheet){
@@ -630,6 +642,7 @@ function renderCards(prospects, div, sheet){
       (isPremium ? '' : '<div class="tel">📞 '+tel+'</div>') +
       (p.vendeur_nom && (isAdmin() || (user && user.role === 'referent')) ? '<div style="margin-top:4px;padding:4px 10px;background:#f3e8ff;border-radius:8px;font-size:12px;color:#7c3aed;">👤 <strong>'+p.vendeur_nom+'</strong></div>' : '') +
       (p.isVerrouillee ? '<div style="margin-top:2px;font-size:11px;color:#dc2626;">🔒 Fiche verrouillee</div>' : '') +
+      ((isPremium && p.id) ? '<div style="margin-top:4px;"><button onclick="event.stopPropagation();toggleFavori(\''+p.id+'\',this)" class="favori-btn">'+(p.isFavori?'⭐':'☆')+'</button></div>' : '') +
       '<div class="actions">'+buttons+'</div></div>';
   }).join('');
 }
@@ -921,7 +934,7 @@ function renderMesFichesList(prospects){
 }
 async function toggleFavori(id,btn){
   try{var r=await fetch('/api/prospects/'+id+'/toggle-favori',{method:'POST',headers:{'Authorization':'Bearer '+token}});var d=await r.json();
-  if(d.success){btn.innerText=d.isFavori?'⭐':'☆';loadMesFiches();}}catch(e){console.error(e);}
+  if(d.success){btn.innerText=d.isFavori?'⭐':'☆';if(currentTab==='leads')loadLeads();else loadMesFiches();}}catch(e){console.error(e);}
 }
 document.addEventListener('DOMContentLoaded',function(){
   var s=document.getElementById('mesFichesSearch');
