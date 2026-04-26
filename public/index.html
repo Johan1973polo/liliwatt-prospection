@@ -694,7 +694,6 @@ async function loadLeads(filter){
     var fc=d.favorisCount||0;var total=(d.prospects||[]).length;
     var sel=document.getElementById('statutFilterLeads');
     if(sel){Array.from(sel.options).forEach(function(o){if(o.value==='all')o.text='📂 Toutes ('+total+')';if(o.value==='favoris')o.text='⭐ Favoris ('+fc+')';});sel.value=currentLeadsFilter;}
-    }
     renderCards(d.prospects||[], div, 'LEADS OHM');
   }catch(e){div.innerHTML='<p style="color:#ef4444;">Erreur reseau</p>';}
 }
@@ -1111,8 +1110,6 @@ function showAdminSub(name) {
     if (s === name) { card.style.background = '#7c3aed'; card.style.color = '#fff'; }
     else { card.style.background = '#fff'; card.style.color = '#1e1b4b'; }
   });
-}
-
 }
 
 async function loadAdminStats() {
