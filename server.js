@@ -181,6 +181,7 @@ app.put('/api/prospects/:id', verifyToken, async (req, res) => {
     const data = {};
     for (const f of allowed) { if (req.body[f] !== undefined) data[f] = req.body[f] || null; }
     if (data.dateRappel) data.dateRappel = new Date(data.dateRappel);
+    if (data.statutAppel === 'A_RAPPELER' && !data.dateRappel) return res.status(400).json({ error: 'Date et heure de rappel obligatoires pour le statut A rappeler' });
     data.dateDernierAppel = new Date();
 
     // Regles metier statut
@@ -441,6 +442,7 @@ app.post('/api/prospects/statut/:id', verifyToken, async (req, res) => {
     if (!prospect) return res.status(404).json({ error: 'Prospect introuvable' });
     if (prospect.vendeurId && prospect.vendeurId !== userId && !isAdminUser) return res.status(403).json({ error: 'Fiche attribuee a un autre vendeur' });
 
+    if (statutEnum === 'A_RAPPELER' && !date_rappel) return res.status(400).json({ error: 'Date et heure de rappel obligatoires pour le statut A rappeler' });
     const data = { statutAppel: statutEnum, dateDernierAppel: new Date() };
     if (note !== undefined) data.noteAppel = note;
     if (date_rappel) data.dateRappel = new Date(date_rappel);
@@ -588,20 +590,20 @@ app.get('/api/kpis/me', verifyToken, async (req, res) => {
     const actWhere = dateFilter ? { userId, timestamp: dateFilter } : { userId };
 
     // Cumulatif : chaque etape inclut les suivantes (distinct prospectId)
+    const FICHES_TRAITEES_TYPES = ['PROSPECT_ENRICHED', 'CALL', 'RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED'];
     const APPELS_TYPES = ['CALL', 'RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED'];
     const RGPD_TYPES = ['RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED'];
     const FACTURES_TYPES = ['INVOICE_RECEIVED', 'SALE_SIGNED'];
     const countDistinct = (types) => prisma.activityLog.findMany({ where: { ...actWhere, type: { in: types } }, select: { prospectId: true }, distinct: ['prospectId'] }).then(r => r.length);
 
-    const [appels, rgpd, factures, ventes, fiches, pipeline, temps, fichesTraitees, ventesStatut] = await Promise.all([
+    const [fichesTraitees, appels, rgpd, factures, ventes, pipeline, temps, ventesStatut] = await Promise.all([
+      countDistinct(FICHES_TRAITEES_TYPES),
       countDistinct(APPELS_TYPES),
       countDistinct(RGPD_TYPES),
       countDistinct(FACTURES_TYPES),
       countDistinct(['SALE_SIGNED']),
-      prisma.activityLog.count({ where: { ...actWhere, type: 'ATTRIBUTION' } }),
       prisma.prospect.groupBy({ by: ['statutAppel'], where: { vendeurId: userId }, _count: true }),
       prisma.workSession.aggregate({ where: { userId, startedAt: dateFilter || undefined }, _sum: { durationMinutes: true } }),
-      prisma.prospect.count({ where: { vendeurId: userId, signataire: { not: null } } }),
       prisma.prospect.count({ where: { vendeurId: userId, statutAppel: 'CLIENT_SIGNE' } }),
     ]);
 
@@ -616,7 +618,7 @@ app.get('/api/kpis/me', verifyToken, async (req, res) => {
 
     res.json({
       period,
-      counters: { appels, rgpd, fichesPrises: fiches, factures, ventes, fichesTraitees, ventesStatut, tempsActifMinutes: temps._sum.durationMinutes || 0 },
+      counters: { fichesTraitees, appels, rgpd, factures, ventes, ventesStatut, tempsActifMinutes: temps._sum.durationMinutes || 0 },
       ratios: {
         adhesion: { value: adhesion, color: color(adhesion, 'adhesion') },
         retourFacture: { value: retour, color: color(retour, 'retour') },
@@ -661,8 +663,8 @@ app.get('/api/kpis/me/funnel', verifyToken, async (req, res) => {
     const w = dateFilter ? { userId, timestamp: dateFilter } : { userId };
 
     const countD = (types) => prisma.activityLog.findMany({ where: { ...w, type: { in: types } }, select: { prospectId: true }, distinct: ['prospectId'] }).then(r => r.length);
-    const [fiches, appels, rgpd, factures, ventes] = await Promise.all([
-      prisma.activityLog.count({ where: { ...w, type: 'ATTRIBUTION' } }),
+    const [fichesTraitees, appels, rgpd, factures, ventes] = await Promise.all([
+      countD(['PROSPECT_ENRICHED', 'CALL', 'RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
       countD(['CALL', 'RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
       countD(['RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
       countD(['INVOICE_RECEIVED', 'SALE_SIGNED']),
@@ -672,8 +674,8 @@ app.get('/api/kpis/me/funnel', verifyToken, async (req, res) => {
     res.json({
       period,
       steps: [
-        { icon: '📋', label: 'Fiches prises', value: fiches, subtext: null },
-        { icon: '📞', label: 'Appels', value: appels, subtext: fiches > 0 ? `${(appels/fiches).toFixed(1)} par fiche` : null },
+        { icon: '📋', label: 'Fiches traitees', value: fichesTraitees, subtext: null },
+        { icon: '📞', label: 'Appels', value: appels, subtext: fichesTraitees > 0 ? `${(appels/fichesTraitees).toFixed(1)} par fiche` : null },
         { icon: '✉️', label: 'RGPD', value: rgpd, subtext: appels > 0 ? `${((rgpd/appels)*100).toFixed(1)}% adhesion` : null },
         { icon: '📄', label: 'Factures', value: factures, subtext: rgpd > 0 ? `${((factures/rgpd)*100).toFixed(1)}% retour` : null },
         { icon: '🏆', label: 'Signes', value: ventes, subtext: factures > 0 ? `${((ventes/factures)*100).toFixed(0)}% closing` : null },
@@ -704,17 +706,16 @@ app.get('/api/kpis/team', verifyToken, async (req, res) => {
       vendeurIds = mesV.map(v => v.id); teamLabel = 'Mon equipe';
     }
 
-    if (!vendeurIds.length) return res.json({ teamLabel, period, vendeurCount: 0, counters: { appels: 0, rgpd: 0, factures: 0, ventes: 0, fichesPrises: 0, fichesTraitees: 0, ventesStatut: 0 }, ratios: { adhesion: { value: 0, color: 'red' }, retourFacture: { value: 0, color: 'red' }, closing: { value: 0, color: 'red' } }, leaderboard: [] });
+    if (!vendeurIds.length) return res.json({ teamLabel, period, vendeurCount: 0, counters: { fichesTraitees: 0, appels: 0, rgpd: 0, factures: 0, ventes: 0, ventesStatut: 0 }, ratios: { adhesion: { value: 0, color: 'red' }, retourFacture: { value: 0, color: 'red' }, closing: { value: 0, color: 'red' } }, leaderboard: [] });
 
     const actW = dateFilter ? { userId: { in: vendeurIds }, timestamp: dateFilter } : { userId: { in: vendeurIds } };
     const countDT = (types) => prisma.activityLog.findMany({ where: { ...actW, type: { in: types } }, select: { prospectId: true }, distinct: ['prospectId'] }).then(r => r.length);
-    const [appels, rgpd, factures, ventes, fiches, fichesTraitees, ventesStatut] = await Promise.all([
+    const [fichesTraitees, appels, rgpd, factures, ventes, ventesStatut] = await Promise.all([
+      countDT(['PROSPECT_ENRICHED', 'CALL', 'RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
       countDT(['CALL', 'RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
       countDT(['RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
       countDT(['INVOICE_RECEIVED', 'SALE_SIGNED']),
       countDT(['SALE_SIGNED']),
-      prisma.activityLog.count({ where: { ...actW, type: 'ATTRIBUTION' } }),
-      prisma.prospect.count({ where: { vendeurId: { in: vendeurIds }, signataire: { not: null } } }),
       prisma.prospect.count({ where: { vendeurId: { in: vendeurIds }, statutAppel: 'CLIENT_SIGNE' } }),
     ]);
 
@@ -748,7 +749,7 @@ app.get('/api/kpis/team', verifyToken, async (req, res) => {
     res.json({
       teamLabel, period, vendeurCount: vendeurIds.length,
       objectives: { appelsCible: 120 * vendeurIds.length, tempsCible: 300 },
-      counters: { appels, rgpd, factures, ventes, fichesPrises: fiches, fichesTraitees, ventesStatut },
+      counters: { fichesTraitees, appels, rgpd, factures, ventes, ventesStatut },
       ratios: { adhesion: { value: adhesion, color: col(adhesion, 'adhesion') }, retourFacture: { value: retour, color: col(retour, 'retour') }, closing: { value: closing, color: col(closing, 'closing') } },
       leaderboard,
     });
