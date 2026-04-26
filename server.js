@@ -345,33 +345,85 @@ app.post('/api/prospects/statut/:id', verifyToken, async (req, res) => {
   } catch(e) { console.error('Statut error:', e); res.status(500).json({ error: e.message }); }
 });
 
-// ===== POST /api/prospects/mail/:id (Neon — RGPD email) =====
+// ===== POST /api/prospects/mail/:id (RGPD centralise via contact@liliwatt.fr) =====
 app.post('/api/prospects/mail/:id', verifyToken, async (req, res) => {
   try {
-    const { email_destinataire, nom_gerant } = req.body;
-    if (!email_destinataire) return res.status(400).json({ error: 'Email requis' });
+    const { id } = req.params;
+    const userId = req.user.id;
 
-    const zohoCred = await prisma.credential.findFirst({
-      where: { userId: req.user.id, serviceName: 'Zoho Mail' },
-      select: { login: true, passwordEncrypted: true }
-    });
-    const zohoLogin = zohoCred?.login || req.user.email;
-    const zohoPass = zohoCred?.passwordEncrypted || '';
-    if (!zohoPass) return res.status(400).json({ error: 'Credentials Zoho non configurees' });
+    const prospect = await prisma.prospect.findUnique({ where: { id } });
+    if (!prospect) return res.status(404).json({ error: 'Fiche introuvable' });
 
+    // Email destinataire : depuis le body OU depuis la fiche
+    const emailDest = req.body.email_destinataire || prospect.email;
+    if (!emailDest) return res.status(400).json({ error: 'Aucun email pour ce prospect. Renseigne-le dans la fiche.' });
+
+    // Infos vendeur pour signature
+    const vendeur = await prisma.user.findUnique({ where: { id: prospect.vendeurId || userId }, select: { email: true, firstName: true, lastName: true, phone: true } });
+    if (!vendeur) return res.status(500).json({ error: 'Vendeur introuvable' });
+
+    const smtpUser = process.env.SMTP_USER || 'contact@liliwatt.fr';
+    const smtpPass = process.env.SMTP_PASS;
+    if (!smtpPass) return res.status(500).json({ error: 'Configuration SMTP manquante. Contactez l\'admin.' });
+
+    const prenom = vendeur.firstName || '';
+    const nom = vendeur.lastName || '';
+    const nomComplet = `${prenom} ${nom}`.trim() || 'Votre conseiller';
+    const phoneLine = vendeur.phone ? `<tr><td style="padding:4px 0;color:#7c3aed;font-weight:600;">📞</td><td style="padding:4px 0 4px 8px;">${vendeur.phone}</td></tr>` : '';
+    const prospectNom = prospect.signataire || prospect.raisonSociale || 'Madame, Monsieur';
     const rgpdLink = `https://liliwatt-courtier.onrender.com/rgpd/${req.user.token_rgpd}`;
-    const vendeurNom = `${req.user.prenom} ${req.user.nom_famille}`;
 
-    const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;"><div style="background:linear-gradient(135deg,#1e1b4b,#7c3aed);padding:28px;border-radius:12px 12px 0 0;text-align:center;"><h1 style="color:#fff;font-size:26px;font-weight:800;letter-spacing:3px;margin:0;">LILIWATT</h1><p style="color:rgba(255,255,255,.7);font-size:11px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px;">Courtage Energie B2B & B2C</p></div><div style="background:#f5f3ff;padding:32px;border-radius:0 0 12px 12px;"><p style="font-size:15px;color:#1e1b4b;">Bonjour${nom_gerant ? ' ' + nom_gerant : ''},</p><p style="color:#374151;line-height:1.7;">Suite a notre entretien telephonique, je me permets de vous transmettre ce lien afin de realiser votre etude energetique <strong>gratuite et sans engagement</strong>.</p><p style="color:#374151;line-height:1.7;">Merci de bien vouloir nous faire parvenir :</p><ul style="color:#374151;line-height:2;"><li>Une <strong>facture hiver</strong> et une <strong>facture ete</strong> d'electricite</li><li>Si vous consommez du gaz, une <strong>facture de gaz</strong></li></ul><div style="text-align:center;margin:28px 0;"><a href="${rgpdLink}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;padding:16px 40px;border-radius:50px;text-decoration:none;font-weight:700;font-size:15px;">Transmettre mes factures</a></div><p style="color:#374151;">Je reste a votre disposition.</p><p style="color:#374151;">Cordialement,</p><div style="margin-top:20px;padding-top:16px;border-top:2px solid #e9d5ff;"><strong style="color:#1e1b4b;">${vendeurNom}</strong><br><span style="color:#7c3aed;font-size:12px;">LILIWATT — Courtage Energie</span><br><span style="font-size:12px;color:#6b7280;">${req.user.email}</span></div></div></div>`;
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f5f3ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f3ff;"><tr><td align="center" style="padding:40px 20px;">
+<table cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(124,58,237,.08);">
+<tr><td style="background:linear-gradient(135deg,#7c3aed,#d946ef);padding:36px 40px;text-align:center;">
+  <h1 style="margin:0;color:#fff;font-size:32px;font-weight:800;letter-spacing:-.02em;">LILIWATT</h1>
+  <p style="margin:8px 0 0;color:rgba(255,255,255,.9);font-size:13px;letter-spacing:.05em;text-transform:uppercase;font-weight:600;">Courtier en energie B2B</p>
+</td></tr>
+<tr><td style="padding:40px;">
+  <p style="margin:0 0 20px;font-size:15px;color:#1c1917;line-height:1.6;">Bonjour <strong>${prospectNom}</strong>,</p>
+  <p style="margin:0 0 20px;font-size:15px;color:#1c1917;line-height:1.7;">Suite a notre echange telephonique, je vous confirme votre interet pour notre <strong>etude comparative gratuite</strong> des fournisseurs d'energie.</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1c1917;line-height:1.7;">Pour vous presenter les meilleures offres, j'ai besoin que vous signiez ce mandat de gestion (RGPD) qui me permet :</p>
+  <ul style="margin:0 0 20px;padding:0 0 0 20px;color:#44403c;line-height:2;font-size:14px;">
+    <li>D'acceder a <strong>vos donnees de consommation</strong></li>
+    <li>De <strong>negocier en votre nom</strong> les meilleurs tarifs</li>
+    <li>De vous presenter <strong>un comparatif detaille</strong> avec les economies realisables</li>
+  </ul>
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0;background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:10px;border-left:4px solid #f59e0b;">
+    <tr><td style="padding:14px 18px;"><p style="margin:0;color:#78350f;font-size:14px;font-weight:600;">⚡ Sans engagement et 100% gratuit</p><p style="margin:4px 0 0;color:#92400e;font-size:13px;">Notre service est finance par les fournisseurs partenaires.</p></td></tr>
+  </table>
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;"><tr><td align="center">
+    <a href="${rgpdLink}" style="display:inline-block;padding:16px 36px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px;box-shadow:0 4px 14px rgba(124,58,237,.4);">✍️ Signer le mandat en ligne</a>
+  </td></tr><tr><td align="center" style="padding-top:8px;"><p style="margin:0;color:#78716c;font-size:12px;">Signature electronique · 2 minutes · Securise</p></td></tr></table>
+  <p style="margin:32px 0 8px;font-size:15px;color:#1c1917;">A tres vite,</p>
+  <table cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;border-top:2px solid #ede9fe;padding-top:20px;width:100%;"><tr>
+    <td valign="top" style="padding-right:16px;"><table cellpadding="0" cellspacing="0" border="0"><tr><td style="width:56px;height:56px;background:linear-gradient(135deg,#7c3aed,#d946ef);border-radius:50%;text-align:center;vertical-align:middle;color:#fff;font-weight:700;font-size:20px;line-height:56px;">${(prenom[0]||'').toUpperCase()}${(nom[0]||'').toUpperCase()}</td></tr></table></td>
+    <td valign="top">
+      <p style="margin:0 0 2px;font-size:17px;font-weight:700;color:#1c1917;">${prenom} <span style="text-transform:uppercase;">${nom}</span></p>
+      <p style="margin:0 0 12px;font-size:13px;color:#7c3aed;font-weight:600;">Conseiller LILIWATT</p>
+      <table cellpadding="0" cellspacing="0" border="0" style="font-size:13px;color:#44403c;">
+        <tr><td style="padding:4px 0;color:#7c3aed;font-weight:600;">📧</td><td style="padding:4px 0 4px 8px;"><a href="mailto:${vendeur.email}" style="color:#44403c;text-decoration:none;">${vendeur.email}</a></td></tr>
+        ${phoneLine}
+        <tr><td style="padding:4px 0;color:#7c3aed;font-weight:600;">🌐</td><td style="padding:4px 0 4px 8px;"><a href="https://liliwatt.fr" style="color:#44403c;text-decoration:none;">liliwatt.fr</a></td></tr>
+      </table>
+    </td>
+  </tr></table>
+</td></tr>
+<tr><td style="background:#fafaf9;padding:20px 40px;border-top:1px solid #f5f5f4;">
+  <p style="margin:0 0 4px;font-size:11px;color:#78716c;text-align:center;line-height:1.5;"><strong>LILISTRAT STRATEGIE SAS</strong> · Marque <strong>LILIWATT</strong></p>
+  <p style="margin:0;font-size:10px;color:#a8a29e;text-align:center;line-height:1.5;">59 rue de Ponthieu, Bureau 326 · 75008 Paris<br>SIREN 103 572 947 · SAS au capital de 10 000€</p>
+</td></tr>
+</table></td></tr></table></body></html>`;
 
-    const transporter = nodemailer.createTransport({ host: 'smtp.zoho.eu', port: 465, secure: true, auth: { user: zohoLogin, pass: zohoPass } });
-    await transporter.sendMail({ from: `"${vendeurNom} — LILIWATT" <${zohoLogin}>`, to: email_destinataire, subject: 'Suite a notre entretien — Etude energetique LILIWATT', html });
+    const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST || 'smtp.zoho.eu', port: parseInt(process.env.SMTP_PORT || '465'), secure: true, auth: { user: smtpUser, pass: smtpPass } });
+    await transporter.sendMail({ from: `"LILIWATT - ${nomComplet}" <${smtpUser}>`, replyTo: vendeur.email, to: emailDest, subject: 'Mandat de gestion energie - LILIWATT', html });
 
-    await prisma.prospect.update({ where: { id: req.params.id }, data: { rgpdEnvoye: true, emailEnvoyeA: email_destinataire } });
-    await prisma.activityLog.create({ data: { userId: req.user.id, prospectId: req.params.id, type: 'RGPD_SENT', metadata: { to: email_destinataire } } });
+    await prisma.prospect.update({ where: { id }, data: { rgpdEnvoye: true, emailEnvoyeA: emailDest } });
+    await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'RGPD_SENT', metadata: { destinataire: emailDest, envoyeDe: smtpUser, replyTo: vendeur.email } } });
 
-    console.log(`📧 RGPD envoye a ${email_destinataire} par ${req.user.email}`);
-    res.json({ success: true });
+    console.log(`📧 RGPD envoye a ${emailDest} via ${smtpUser} (replyTo: ${vendeur.email})`);
+    res.json({ success: true, message: `Mandat envoye a ${emailDest}`, from: smtpUser, replyTo: vendeur.email });
   } catch(e) { console.error('Mail error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
