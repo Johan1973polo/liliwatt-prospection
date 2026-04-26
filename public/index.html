@@ -395,15 +395,10 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
     <div class="panel" id="tab-admin">
       <!-- Cartes navigation -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;">
-        <div onclick="showAdminSub('stats')" id="acard-stats" style="background:#7c3aed;color:#fff;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
+        <div onclick="openStatsBase()" id="acard-stats" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
           <div style="font-size:32px;margin-bottom:6px;">📊</div>
           <div style="font-weight:700;font-size:14px;">Statistiques</div>
-          <div style="font-size:11px;opacity:.8;">BASE BRUTE</div>
-        </div>
-        <div onclick="showAdminSub('recharger')" id="acard-recharger" style="background:#fff;color:#1e1b4b;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
-          <div style="font-size:32px;margin-bottom:6px;">🔄</div>
-          <div style="font-weight:700;font-size:14px;">Recharger</div>
-          <div style="font-size:11px;color:#6b7280;">Scrape Google Places</div>
+          <div style="font-size:11px;opacity:.85;">Etat des bases</div>
         </div>
         <div onclick="openAttributionPremiumModal()" id="acard-premium" style="background:#fff;color:#1e1b4b;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
           <div style="font-size:32px;margin-bottom:6px;">💎</div>
@@ -426,6 +421,35 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
           <div style="font-size:11px;opacity:.85;">Desactiver / reactiver</div>
         </div>
       </div>
+      <!-- Stats Base section -->
+      <div id="statsBaseSection" style="display:none;margin-top:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h3 style="margin:0;">📊 Statistiques des bases</h3>
+          <button onclick="loadStatsBase()" style="padding:6px 12px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;">🔄</button>
+        </div>
+        <div id="statsBaseCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
+          <div style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border-radius:12px;padding:20px;">
+            <div style="font-size:13px;opacity:.85;margin-bottom:6px;">🏢 Base Brute</div>
+            <div id="sb-brute-total" style="font-size:28px;font-weight:800;">—</div>
+            <div style="margin-top:8px;font-size:12px;">Disponibles : <strong id="sb-brute-dispo">—</strong> | Attribuees : <strong id="sb-brute-attr">—</strong></div>
+            <div style="margin-top:6px;background:rgba(255,255,255,.2);border-radius:6px;height:8px;overflow:hidden;"><div id="sb-brute-bar" style="height:100%;background:#fff;border-radius:6px;width:0%;transition:width .5s;"></div></div>
+            <div style="font-size:11px;opacity:.7;margin-top:4px;text-align:right;" id="sb-brute-pct">0% attribuee</div>
+          </div>
+          <div style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border-radius:12px;padding:20px;">
+            <div style="font-size:13px;opacity:.85;margin-bottom:6px;">💎 Base Premium</div>
+            <div id="sb-prem-total" style="font-size:28px;font-weight:800;">—</div>
+            <div style="margin-top:8px;font-size:12px;">Disponibles : <strong id="sb-prem-dispo">—</strong> | Attribuees : <strong id="sb-prem-attr">—</strong></div>
+            <div style="margin-top:6px;background:rgba(255,255,255,.2);border-radius:6px;height:8px;overflow:hidden;"><div id="sb-prem-bar" style="height:100%;background:#fff;border-radius:6px;width:0%;transition:width .5s;"></div></div>
+            <div style="font-size:11px;opacity:.7;margin-top:4px;text-align:right;" id="sb-prem-pct">0% attribuee</div>
+          </div>
+          <div style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-radius:12px;padding:20px;">
+            <div style="font-size:13px;opacity:.85;margin-bottom:6px;">👥 Vendeurs actifs</div>
+            <div id="sb-vendeurs" style="font-size:28px;font-weight:800;">—</div>
+            <div style="margin-top:8px;font-size:12px;">✍️ Fiches manuelles : <strong id="sb-manuelles">—</strong></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Gerer vendeurs section -->
       <div id="gererVendeursSection" style="display:none;margin-top:20px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;"><h3 style="margin:0;">⚙️ Gerer les vendeurs</h3><button onclick="loadGererVendeurs()" style="padding:6px 12px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;">🔄</button></div>
@@ -446,32 +470,6 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         <div id="adminVendeurs" style="font-size:12px;"></div>
       </div>
 
-      <!-- Section Recharger -->
-      <div id="asub-recharger" class="card" style="display:none;">
-        <h2 style="color:#1e1b4b;">⚡ Recharger BASE BRUTE</h2>
-        <div style="display:flex;gap:10px;margin-bottom:12px;">
-          <input type="text" id="scrapVille" placeholder="Ex: Lyon, Marseille..." style="flex:1;padding:8px 12px;border:1.5px solid #e9d5ff;border-radius:8px;font-size:13px;">
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;">
-          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="restaurant" checked> Restaurant</label>
-          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="hotel" checked> Hôtel</label>
-          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="boulangerie" checked> Boulangerie</label>
-          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="laverie"> Laverie</label>
-          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="garage"> Garage</label>
-          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="salle_sport"> Salle de sport</label>
-          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="spa_bien_etre"> Spa</label>
-          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="bar_discoteque"> Bar/Disco</label>
-          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="camping"> Camping</label>
-          <label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#faf5ff;border-radius:6px;cursor:pointer;"><input type="checkbox" class="scrap_sec" value="supermarche"> Supermarché</label>
-        </div>
-        <div id="customSecteurs"></div>
-        <div style="display:flex;gap:6px;margin-bottom:14px;">
-          <input type="text" id="newSecteur" placeholder="Type Google Places (ex: florist, guest_house...)" style="flex:1;padding:6px 10px;border:1.5px solid #e9d5ff;border-radius:6px;font-size:12px;">
-          <button class="btn btn-sm" onclick="addCustomSecteur()">➕</button>
-        </div>
-        <button class="btn" onclick="lancerScrap()" style="width:100%;">⚡ Lancer le scraping</button>
-        <div id="scrapResult" style="margin-top:12px;"></div>
-      </div>
 
       <!-- Section Attribution Premium -->
       <div id="asub-premium" class="card" style="display:none;">
@@ -1107,7 +1105,7 @@ async function loadVendeurDetail(vid){
 
 // ===== ADMIN =====
 function showAdminSub(name) {
-  ['stats','recharger','premium'].forEach(s => {
+  ['stats','premium'].forEach(s => {
     document.getElementById('asub-' + s).style.display = s === name ? 'block' : 'none';
     const card = document.getElementById('acard-' + s);
     if (s === name) { card.style.background = '#7c3aed'; card.style.color = '#fff'; }
@@ -1115,31 +1113,11 @@ function showAdminSub(name) {
   });
 }
 
-// Custom secteurs
-function loadCustomSecteurs() {
-  const saved = JSON.parse(localStorage.getItem('custom_secteurs') || '[]');
-  const div = document.getElementById('customSecteurs');
-  if (!div) return;
-  div.innerHTML = saved.map(s => '<label style="font-size:12px;display:flex;align-items:center;gap:4px;padding:5px 8px;background:#fef3c7;border-radius:6px;cursor:pointer;margin-bottom:4px;"><input type="checkbox" class="scrap_sec" value="'+s+'" checked> '+s+' <button onclick="removeCustomSecteur(\''+s+'\')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:10px;">✕</button></label>').join('');
-}
-function addCustomSecteur() {
-  const val = document.getElementById('newSecteur').value.trim();
-  if (!val) return;
-  const saved = JSON.parse(localStorage.getItem('custom_secteurs') || '[]');
-  if (!saved.includes(val)) { saved.push(val); localStorage.setItem('custom_secteurs', JSON.stringify(saved)); }
-  document.getElementById('newSecteur').value = '';
-  loadCustomSecteurs();
-}
-function removeCustomSecteur(s) {
-  const saved = JSON.parse(localStorage.getItem('custom_secteurs') || '[]').filter(x => x !== s);
-  localStorage.setItem('custom_secteurs', JSON.stringify(saved));
-  loadCustomSecteurs();
 }
 
 async function loadAdminStats() {
   if (!isAdmin()) return;
   loadAdminVendeurDropdown();
-  loadCustomSecteurs();
   try {
     const r = await fetch('/api/admin/stats', { headers: { 'Authorization': 'Bearer ' + token } });
     const d = await r.json();
@@ -1238,27 +1216,30 @@ async function openUserActivite(uid){
   }catch(e){console.error(e);}
 }
 
-// ===== ADMIN SCRAPER =====
-async function lancerScrap() {
-  const ville = document.getElementById('scrapVille').value.trim();
-  if (!ville) { alert('Ville requise'); return; }
-  const secteurs = [...document.querySelectorAll('.scrap_sec:checked')].map(c => c.value);
-  if (!secteurs.length) { alert('Sélectionnez au moins un secteur'); return; }
-  const div = document.getElementById('scrapResult');
-  div.innerHTML = '';
-  for (const sec of secteurs) {
-    div.innerHTML += '<p style="color:#7c3aed;">🔍 ' + sec + ' — ' + ville + '...</p>';
-    try {
-      const r = await fetch('/api/admin/scraper', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ ville, secteur: sec }) });
-      const d = await r.json();
-      if (d.success) {
-        div.innerHTML += '<p style="color:#22c55e;">✅ ' + sec + ' : ' + (d.inserted||0) + ' ajoutes, ' + (d.skipped||0) + ' doublons (' + (d.duration||0) + 's)</p>';
-      } else {
-        div.innerHTML += '<p style="color:#ef4444;">❌ ' + sec + ' : ' + (d.error || 'erreur') + (d.detail ? ' — ' + d.detail : '') + '</p>';
-      }
-    } catch(e) { div.innerHTML += '<p style="color:#ef4444;">❌ ' + sec + ' : erreur réseau</p>'; }
-  }
-  div.innerHTML += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;margin-top:8px;"><strong style="color:#16a34a;">Scraping terminé</strong></div>';
+// ===== STATS BASE =====
+function openStatsBase() {
+  document.querySelectorAll('[id^="asub-"],[id$="Section"]').forEach(el => { if(el.id !== 'statsBaseSection') el.style.display = 'none'; });
+  document.getElementById('statsBaseSection').style.display = 'block';
+  loadStatsBase();
+}
+async function loadStatsBase() {
+  try {
+    const r = await fetch('/api/admin/stats-base', { headers: { 'Authorization': 'Bearer ' + token } });
+    const d = await r.json();
+    if (!d.success) return;
+    document.getElementById('sb-brute-total').textContent = d.brute.total.toLocaleString('fr-FR');
+    document.getElementById('sb-brute-dispo').textContent = d.brute.disponible.toLocaleString('fr-FR');
+    document.getElementById('sb-brute-attr').textContent = d.brute.attribuee.toLocaleString('fr-FR');
+    document.getElementById('sb-brute-bar').style.width = d.brute.pctAttribuee + '%';
+    document.getElementById('sb-brute-pct').textContent = d.brute.pctAttribuee + '% attribuee';
+    document.getElementById('sb-prem-total').textContent = d.premium.total.toLocaleString('fr-FR');
+    document.getElementById('sb-prem-dispo').textContent = d.premium.disponible.toLocaleString('fr-FR');
+    document.getElementById('sb-prem-attr').textContent = d.premium.attribuee.toLocaleString('fr-FR');
+    document.getElementById('sb-prem-bar').style.width = d.premium.pctAttribuee + '%';
+    document.getElementById('sb-prem-pct').textContent = d.premium.pctAttribuee + '% attribuee';
+    document.getElementById('sb-vendeurs').textContent = d.vendeursActifs;
+    document.getElementById('sb-manuelles').textContent = d.manuelle.total.toLocaleString('fr-FR');
+  } catch(e) { console.error('Stats base error:', e); }
 }
 
 // ===== ADMIN LEADS =====

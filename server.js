@@ -1145,6 +1145,25 @@ app.post('/api/admin/scrape-attribuer', verifyToken, isAdminMW, async (req, res)
   } catch(e) { console.error('Scrape-attribuer error:', e); res.status(500).json({ error: e.message }); }
 });
 
+// ===== STATS BASE (admin) =====
+app.get('/api/admin/stats-base', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const [bT, bD, pT, pD, mT, vA] = await Promise.all([
+      prisma.prospect.count({ where: { source: 'BRUTE' } }),
+      prisma.prospect.count({ where: { source: 'BRUTE', vendeurId: null } }),
+      prisma.prospect.count({ where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] } } }),
+      prisma.prospect.count({ where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: null } }),
+      prisma.prospect.count({ where: { source: 'MANUELLE' } }),
+      prisma.user.count({ where: { isActive: true, role: { in: ['VENDEUR', 'REFERENT'] } } }),
+    ]);
+    res.json({ success: true,
+      brute: { total: bT, disponible: bD, attribuee: bT - bD, pctAttribuee: bT > 0 ? Math.round(((bT - bD) / bT) * 100) : 0 },
+      premium: { total: pT, disponible: pD, attribuee: pT - pD, pctAttribuee: pT > 0 ? Math.round(((pT - pD) / pT) * 100) : 0 },
+      manuelle: { total: mT }, vendeursActifs: vA
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== GERER VENDEURS (admin) =====
 app.get('/api/admin/gerer-vendeurs', verifyToken, isAdminMW, async (req, res) => {
   try {
