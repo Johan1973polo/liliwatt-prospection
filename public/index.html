@@ -160,6 +160,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
   <div class="hdr">
     <h1>LILIWATT</h1>
     <div class="info">
+      <span id="presenceCounter" style="font-size:13px;color:rgba(255,255,255,.85);padding:6px 12px;background:rgba(255,255,255,.1);border-radius:6px;margin-right:8px;">⏱ 0h00</span>
       <span>Bonjour <strong id="uName"></strong></span>
       <span class="badge" id="uRole"></span>
       <button onclick="logout()">Déconnexion</button>
@@ -255,7 +256,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
             <div class="kpi-progress-label"><span id="kpiAppelsPercent">0%</span><span id="kpiAppelsRemaining" class="kpi-mono">120 restants</span></div>
           </div>
           <div class="kpi-hero-card"><div class="kpi-label-up">✉️ RGPD envoyes</div><div class="kpi-secondary-value" id="kpiRgpdValue">0</div><div class="kpi-meta" id="kpiRgpdMeta">aucun encore</div></div>
-          <div class="kpi-hero-card" style="opacity:0.6;"><div class="kpi-label-up">⏱️ Temps actif</div><div class="kpi-secondary-value" id="kpiTempsValue" style="font-size:22px;color:#a8a29e;">A venir</div><div class="kpi-meta" id="kpiTempsMeta" style="font-size:11px;">Tracking en preparation</div></div>
+          <div class="kpi-hero-card"><div class="kpi-label-up">⏱️ Temps actif</div><div class="kpi-secondary-value" id="kpiTempsValue">0h00</div><div class="kpi-meta" id="kpiTempsMeta">aujourd'hui</div></div>
         </div>
         <div class="kpi-section-title">Mes ratios commerciaux</div>
         <div class="kpi-ratios-grid" id="kpiRatios"></div>
@@ -539,14 +540,17 @@ function showApp(){
 async function doLogin(){
   const e=document.getElementById('lEmail').value,p=document.getElementById('lPwd').value,err=document.getElementById('lErr');
   try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p})});const d=await r.json();
-  if(d.success){token=d.token;user=d.user;localStorage.setItem('p_token',token);localStorage.setItem('p_user',JSON.stringify(user));showApp();}
+  if(d.success){token=d.token;user=d.user;localStorage.setItem('p_token',token);localStorage.setItem('p_user',JSON.stringify(user));showApp();maybeShowRGPDModal();}
   else{err.style.display='block';err.textContent='❌ '+d.error;}}catch(x){err.style.display='block';err.textContent='Erreur réseau';}
 }
 function logout(){stopHeartbeat();localStorage.removeItem('p_token');localStorage.removeItem('p_user');token=null;user=null;showLogin();}
 // Heartbeat
+window.lastActivity=Date.now();
+['mousemove','keydown','click','scroll'].forEach(function(e){document.addEventListener(e,function(){window.lastActivity=Date.now();},{passive:true});});
 function startHeartbeat(){pingHB();if(window._hbInterval)clearInterval(window._hbInterval);window._hbInterval=setInterval(pingHB,10000);}
 function stopHeartbeat(){if(window._hbInterval){clearInterval(window._hbInterval);window._hbInterval=null;}}
-async function pingHB(){if(!token)return;try{await fetch('/api/heartbeat',{method:'POST',headers:{'Authorization':'Bearer '+token}});}catch(e){}}
+async function pingHB(){if(!token)return;try{var r=await fetch('/api/heartbeat',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({lastActivity:window.lastActivity})});var d=await r.json();if(d.totalMinutesToday!==undefined)updatePresenceCounter(d.totalMinutesToday);}catch(e){}}
+function updatePresenceCounter(min){var el=document.getElementById('presenceCounter');if(!el)return;var h=Math.floor(min/60),m=min%60;el.textContent='⏱ '+h+'h'+(m<10?'0'+m:m);}
 
 var currentTab='brute';
 function showTab(n){currentTab=n;document.querySelectorAll('.tab').forEach((t,i)=>{const tabs=['brute','mesfiches','leads','kpis','equipe','admin'];t.classList.toggle('active',tabs[i]===n);});document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('tab-'+n).classList.add('active');if(n==='mesfiches')loadMesFiches();if(n==='leads')loadLeads();if(n==='kpis')loadKpis();if(n==='equipe')loadMonEquipe();if(n==='admin'&&isAdmin())loadAdminStats();}
@@ -799,9 +803,9 @@ function renderKpiHero(k){
   document.getElementById('kpiAppelsRemaining').innerText=rem+' restants';
   document.getElementById('kpiRgpdValue').innerText=k.counters.rgpd;
   document.getElementById('kpiRgpdMeta').innerText=k.counters.rgpd>0?(pl[k.period]||'').toLowerCase():'aucun encore';
-  // Temps actif masque (Phase 5C2)
-  document.getElementById('kpiTempsValue').innerText='A venir';
-  document.getElementById('kpiTempsMeta').innerText='Tracking en preparation';
+  var min=k.counters.tempsActifMinutes||0,h=Math.floor(min/60),m=min%60;
+  document.getElementById('kpiTempsValue').innerText=h+'h'+(m<10?'0'+m:m);
+  document.getElementById('kpiTempsMeta').innerText=min>=300?'🟢 Jour vert !':'objectif 5h';
 }
 function renderKpiRatios(k){
   var r=k.ratios,c=k.counters;
@@ -1671,5 +1675,16 @@ async function doAttribuerPremium(){
 }
 </script>
 
+<div style="text-align:center;padding:12px;color:#9ca3af;font-size:11px;">ℹ️ L'application mesure votre temps d'utilisation active a des fins de statistiques. <a href="#" onclick="alert('LILIWATT mesure votre temps d\'utilisation active (presence + activite souris/clavier) a des fins de statistiques et d\'accompagnement. Conformement au RGPD, vous disposez d\'un droit d\'acces, de rectification et de suppression. Contact : contact@liliwatt.fr');return false;" style="color:#7c3aed;">En savoir plus</a></div>
+<script>
+function maybeShowRGPDModal(){
+  if(localStorage.getItem('liliwatt_rgpd_seen'))return;
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:5000;padding:20px;';
+  ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:28px;max-width:500px;width:100%;"><h2 style="margin:0 0 12px;">👋 Bienvenue sur LILIWATT</h2><p style="font-size:14px;line-height:1.6;color:#374151;margin:0 0 12px;">L\'application mesure votre temps d\'utilisation active a des fins de statistiques et d\'accompagnement.</p><p style="font-size:13px;line-height:1.6;color:#6b7280;margin:0 0 20px;">Vos donnees sont traitees dans le cadre du RGPD. Pour toute question : contact@liliwatt.fr</p><button id="rgpdOk" style="width:100%;padding:12px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">J\'ai compris</button></div>';
+  document.body.appendChild(ov);
+  document.getElementById('rgpdOk').onclick=function(){localStorage.setItem('liliwatt_rgpd_seen','1');document.body.removeChild(ov);};
+}
+</script>
 </body>
 </html>
