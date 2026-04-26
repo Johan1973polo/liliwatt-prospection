@@ -185,6 +185,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
 .support-link{font-size:13px;color:#6b7280;}
 .support-link a{color:#a855f7;text-decoration:none;font-weight:600;}
 @media(max-width:900px){.login-page{grid-template-columns:1fr;overflow-y:auto;}.login-left{display:none;}.login-right{padding:32px 24px;}.form-title{font-size:28px;}}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -1053,21 +1054,40 @@ document.addEventListener('DOMContentLoaded',function(){
 
 // ===== MES FICHES =====
 let currentMesFichesStatut='tous',currentMesFichesSearch='';
-async function loadMesFiches(){
+var _mfPage=1,_mfTotal=0,_mfLoading=false,_mfAllLoaded=false,_mfObserver=null;
+var MF_PAGE_SIZE=100;
+
+async function loadMesFiches(append){
+  if(_mfLoading)return;
+  if(!append){_mfPage=1;_mfTotal=0;_mfAllLoaded=false;window._mesFichesMap={};}
+  _mfLoading=true;
   try{
     var params=new URLSearchParams();
     if(currentMesFichesStatut&&currentMesFichesStatut!=='tous'&&currentMesFichesStatut!=='all')params.set('statut',currentMesFichesStatut);
     if(currentMesFichesSearch)params.set('search',currentMesFichesSearch);
     var ville=document.getElementById('mesFichesVille');if(ville&&ville.value&&ville.value!=='all')params.set('ville',ville.value);
     var secteur=document.getElementById('mesFichesSecteur');if(secteur&&secteur.value&&secteur.value!=='all')params.set('secteur',secteur.value);
-    params.set('limit','200');
+    params.set('page',_mfPage);params.set('limit',MF_PAGE_SIZE);
     var r=await fetch('/api/prospects/mes-fiches?'+params,{headers:{'Authorization':'Bearer '+token}});
     var d=await r.json();
-    renderMesFichesFiltres(d.statusCounts,d.total);
-    renderMesFichesList(d.prospects);
-    updateMesFichesBadge(d.total);
-    populateMesFichesDropdowns(d.villesDisponibles,d.secteursDisponibles);
+    _mfTotal=d.total;
+    if(!append){
+      renderMesFichesFiltres(d.statusCounts,d.total);
+      updateMesFichesBadge(d.total);
+      populateMesFichesDropdowns(d.villesDisponibles,d.secteursDisponibles);
+      document.getElementById('mesFichesList').innerHTML='';
+    }
+    appendMesFiches(d.prospects);
+    var loaded=Object.keys(window._mesFichesMap||{}).length;
+    _mfAllLoaded=loaded>=_mfTotal||d.prospects.length<MF_PAGE_SIZE;
+    updateMesFichesCounter(loaded,_mfTotal);
+    setupMesFichesSentinel();
   }catch(e){console.error('loadMesFiches error:',e);}
+  _mfLoading=false;
+}
+function loadMesFichesNext(){
+  if(_mfAllLoaded||_mfLoading)return;
+  _mfPage++;loadMesFiches(true);
 }
 function populateMesFichesDropdowns(villes,secteurs){
   var vs=document.getElementById('mesFichesVille'),ss=document.getElementById('mesFichesSecteur');
@@ -1086,8 +1106,6 @@ function resetMesFichesFilters(){
 function updateMesFichesBadge(total){
   var b=document.getElementById('mesFichesBadge');
   if(b){b.innerText=total;b.style.display=total>0?'inline-block':'none';}
-  var t=document.getElementById('mesFichesTotal');
-  if(t)t.innerText=total+' fiche'+(total>1?'s':'');
 }
 function renderMesFichesFiltres(counts,total){
   var labels={'tous':'📂 Toutes les fiches','favoris':'⭐ Favoris','A_APPELER':'📞 A appeler','APPELE':'✅ Appele','A_RAPPELER':'🔄 A rappeler','INTERESSE':'🟢 Interesse','ATTENTE_DOCUMENTS':'📄 Attente docs','DOSSIER_RECU':'📦 Dossier recu','CLIENT_SIGNE':'🏆 Client signe','PAS_INTERESSE':'❌ Pas interesse','NE_REPOND_PAS':'📵 Ne repond pas','FAUX_NUMERO':'🚫 Faux numero'};
@@ -1100,18 +1118,36 @@ function renderMesFichesFiltres(counts,total){
   sel.value=cur;
 }
 function setMesFichesStatut(s){currentMesFichesStatut=s;loadMesFiches();}
-function renderMesFichesList(prospects){
-  if(!prospects.length){document.getElementById('mesFichesList').innerHTML='<div style="text-align:center;color:#9ca3af;padding:60px 20px;"><div style="font-size:48px;margin-bottom:12px;">📭</div><div style="font-weight:600;color:#44403c;">Aucune fiche</div><div style="font-size:13px;margin-top:4px;">Va dans Base brute pour t\'attribuer des prospects</div></div>';return;}
-  var stl={A_APPELER:{l:'A appeler',bg:'#ede9fe',c:'#5b21b6'},A_RAPPELER:{l:'A rappeler',bg:'#fef3c7',c:'#b45309'},INTERESSE:{l:'Interesse',bg:'#d1fae5',c:'#065f46'},ATTENTE_DOCUMENTS:{l:'Attente docs',bg:'#dbeafe',c:'#1e40af'},DOSSIER_RECU:{l:'Dossier recu',bg:'#d1fae5',c:'#10b981'},PAS_INTERESSE:{l:'Pas interesse',bg:'#f5f5f4',c:'#78716c'},NE_REPOND_PAS:{l:'NRP',bg:'#f5f5f4',c:'#78716c'},FAUX_NUMERO:{l:'Faux numero',bg:'#fee2e2',c:'#991b1b'},CLIENT_SIGNE:{l:'Signe 🏆',bg:'#bbf7d0',c:'#14532d'},APPELE:{l:'Appele',bg:'#ede9fe',c:'#7c3aed'}};
-  document.getElementById('mesFichesList').innerHTML=prospects.map(function(p){
-    var st=stl[p.statutAppel]||{l:'—',bg:'#f5f5f4',c:'#78716c'};
-    var dr=p.dateRappel?'<span style="color:#b45309;font-weight:600;font-size:12px;">📅 Rappel: '+new Date(p.dateRappel).toLocaleDateString('fr-FR')+'</span>':'';
-    var sb=p.source==='MANUELLE'?'<span style="background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;">🔒 MANUELLE</span>':(p.source==='PREMIUM'?'<span style="background:#fae8ff;color:#a21caf;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;">💎 PREMIUM</span>':'');
-    var fav=p.isFavori;
-    return '<div onclick="openFicheById(\''+p.id+'\')" style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px 20px;cursor:pointer;transition:all .15s;display:flex;justify-content:space-between;align-items:center;gap:12px;" onmouseover="this.style.borderColor=\'#7c3aed\';this.style.boxShadow=\'0 4px 12px rgba(124,58,237,.12)\'" onmouseout="this.style.borderColor=\'#e7e5e4\';this.style.boxShadow=\'none\'"><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><strong style="font-size:15px;color:#1c1917;">'+((p.raisonSociale||'—'))+'</strong>'+sb+'</div><div style="color:#78716c;font-size:13px;">'+(p.ville||'')+' '+(p.codePostal?'· '+p.codePostal:'')+(p.telephone?' · 📞 '+p.telephone:'')+'</div>'+dr+'</div><button onclick="event.stopPropagation();toggleFavori(\''+p.id+'\',this)" class="favori-btn" title="'+(fav?'Retirer des favoris':'Ajouter aux favoris')+'">'+(fav?'⭐':'☆')+'</button><span style="background:'+st.bg+';color:'+st.c+';padding:6px 12px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap;">'+st.l+'</span></div>';
-  }).join('');
-  // Store map for drawer
-  window._mesFichesMap={};prospects.forEach(function(p){window._mesFichesMap[p.id]=p;});
+var _mfStl={A_APPELER:{l:'A appeler',bg:'#ede9fe',c:'#5b21b6'},A_RAPPELER:{l:'A rappeler',bg:'#fef3c7',c:'#b45309'},INTERESSE:{l:'Interesse',bg:'#d1fae5',c:'#065f46'},ATTENTE_DOCUMENTS:{l:'Attente docs',bg:'#dbeafe',c:'#1e40af'},DOSSIER_RECU:{l:'Dossier recu',bg:'#d1fae5',c:'#10b981'},PAS_INTERESSE:{l:'Pas interesse',bg:'#f5f5f4',c:'#78716c'},NE_REPOND_PAS:{l:'NRP',bg:'#f5f5f4',c:'#78716c'},FAUX_NUMERO:{l:'Faux numero',bg:'#fee2e2',c:'#991b1b'},CLIENT_SIGNE:{l:'Signe 🏆',bg:'#bbf7d0',c:'#14532d'},APPELE:{l:'Appele',bg:'#ede9fe',c:'#7c3aed'}};
+function renderFicheCard(p){
+  var st=_mfStl[p.statutAppel]||{l:'—',bg:'#f5f5f4',c:'#78716c'};
+  var dr=p.dateRappel?'<span style="color:#b45309;font-weight:600;font-size:12px;">📅 Rappel: '+new Date(p.dateRappel).toLocaleDateString('fr-FR')+'</span>':'';
+  var sb=p.source==='MANUELLE'?'<span style="background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;">🔒 MANUELLE</span>':(p.source==='PREMIUM'?'<span style="background:#fae8ff;color:#a21caf;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;">💎 PREMIUM</span>':'');
+  var fav=p.isFavori;
+  return '<div onclick="openFicheById(\''+p.id+'\')" style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px 20px;cursor:pointer;transition:all .15s;display:flex;justify-content:space-between;align-items:center;gap:12px;" onmouseover="this.style.borderColor=\'#7c3aed\';this.style.boxShadow=\'0 4px 12px rgba(124,58,237,.12)\'" onmouseout="this.style.borderColor=\'#e7e5e4\';this.style.boxShadow=\'none\'"><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><strong style="font-size:15px;color:#1c1917;">'+((p.raisonSociale||'—'))+'</strong>'+sb+'</div><div style="color:#78716c;font-size:13px;">'+(p.ville||'')+' '+(p.codePostal?'· '+p.codePostal:'')+(p.telephone?' · 📞 '+p.telephone:'')+'</div>'+dr+'</div><button onclick="event.stopPropagation();toggleFavori(\''+p.id+'\',this)" class="favori-btn" title="'+(fav?'Retirer des favoris':'Ajouter aux favoris')+'">'+(fav?'⭐':'☆')+'</button><span style="background:'+st.bg+';color:'+st.c+';padding:6px 12px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap;">'+st.l+'</span></div>';
+}
+function appendMesFiches(prospects){
+  if(!prospects.length&&_mfPage===1){document.getElementById('mesFichesList').innerHTML='<div style="text-align:center;color:#9ca3af;padding:60px 20px;"><div style="font-size:48px;margin-bottom:12px;">📭</div><div style="font-weight:600;color:#44403c;">Aucune fiche</div><div style="font-size:13px;margin-top:4px;">Va dans Base brute pour t\'attribuer des prospects</div></div>';return;}
+  if(!window._mesFichesMap)window._mesFichesMap={};
+  var list=document.getElementById('mesFichesList');
+  // Remove sentinel before appending
+  var old=document.getElementById('mfSentinel');if(old)old.remove();
+  var html=prospects.map(function(p){window._mesFichesMap[p.id]=p;return renderFicheCard(p);}).join('');
+  list.insertAdjacentHTML('beforeend',html);
+}
+function updateMesFichesCounter(loaded,total){
+  var t=document.getElementById('mesFichesTotal');
+  if(t)t.innerHTML=total+' fiche'+(total>1?'s':'')+' <span style="font-size:12px;color:#9ca3af;">'+(loaded<total?loaded+' / '+total+' affichees':'✓ toutes affichees')+'</span>';
+}
+function setupMesFichesSentinel(){
+  var old=document.getElementById('mfSentinel');if(old)old.remove();
+  if(_mfAllLoaded)return;
+  var list=document.getElementById('mesFichesList');
+  var sentinel=document.createElement('div');sentinel.id='mfSentinel';sentinel.style.cssText='text-align:center;padding:20px;color:#9ca3af;';sentinel.innerHTML='<div style="display:inline-block;width:24px;height:24px;border:3px solid #e5e7eb;border-top-color:#7c3aed;border-radius:50%;animation:spin .6s linear infinite;"></div>';
+  list.appendChild(sentinel);
+  if(_mfObserver)_mfObserver.disconnect();
+  _mfObserver=new IntersectionObserver(function(entries){if(entries[0].isIntersecting)loadMesFichesNext();},{rootMargin:'200px'});
+  _mfObserver.observe(sentinel);
 }
 async function toggleFavori(id,btn){
   try{var r=await fetch('/api/prospects/'+id+'/toggle-favori',{method:'POST',headers:{'Authorization':'Bearer '+token}});var d=await r.json();
