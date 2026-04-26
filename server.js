@@ -51,8 +51,7 @@ app.post('/api/auth/login', async (req, res) => {
     // Charger le token RGPD separement
     const rgpdCred = await prisma.credential.findFirst({ where: { userId: user.id, serviceName: 'RGPD' }, select: { login: true } });
 
-    const isAdm = user.role === 'ADMIN' || user.email === 'johan.mallet@liliwatt.fr' || user.email === 'kevin.moreau@liliwatt.fr';
-    const role = isAdm ? 'admin' : (user.role === 'REFERENT' ? 'referent' : 'vendeur');
+    const role = user.role === 'ADMIN' ? 'admin' : (user.role === 'REFERENT' ? 'referent' : 'vendeur');
     const tokenRgpd = rgpdCred?.login || '';
 
     const token = jwt.sign({
