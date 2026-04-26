@@ -355,13 +355,23 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
     }
 
     const { statut } = req.query;
-    const where = { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: vendeurFilter };
-    if (statut === 'favoris') where.isFavori = true;
+    const baseWhere = { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: vendeurFilter };
+    const where = { ...baseWhere };
+    if (statut && statut !== 'all') {
+      if (statut === 'favoris') where.isFavori = true;
+      else {
+        const map = { a_appeler:'A_APPELER', appele:'APPELE', a_rappeler:'A_RAPPELER', interesse:'INTERESSE', attente_doc:'ATTENTE_DOCUMENTS', dossier_recu:'DOSSIER_RECU', client_signe:'CLIENT_SIGNE', pas_interesse:'PAS_INTERESSE', nrp:'NE_REPOND_PAS', faux_numero:'FAUX_NUMERO' };
+        if (map[statut]) where.statutAppel = map[statut];
+      }
+    }
 
-    const [items, favorisCount] = await Promise.all([
+    const [items, statsByStatus, favorisCount] = await Promise.all([
       prisma.prospect.findMany({ where, orderBy: [{ dateFinLivraison: 'asc' }], take: 200, include: { vendeur: { select: { email: true, firstName: true, lastName: true } } } }),
-      prisma.prospect.count({ where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: vendeurFilter, isFavori: true } }),
+      prisma.prospect.groupBy({ by: ['statutAppel'], where: baseWhere, _count: true }),
+      prisma.prospect.count({ where: { ...baseWhere, isFavori: true } }),
     ]);
+    const statusCounts = statsByStatus.reduce((a, s) => { a[s.statutAppel || 'NULL'] = s._count; return a; }, {});
+    statusCounts.favoris = favorisCount;
 
     const prospects = items.map(p => ({
       _row: p.id, id: p.id, _sheet: 'LEADS OHM', _attribue: true,
@@ -379,7 +389,7 @@ app.get('/api/prospects/leads', verifyToken, async (req, res) => {
     }));
 
     console.log(`💎 LEADS pour ${req.user.email}: ${prospects.length} fiches`);
-    res.json({ success: true, prospects, favorisCount });
+    res.json({ success: true, prospects, favorisCount, statusCounts });
   } catch(e) { console.error('Leads error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
@@ -522,7 +532,7 @@ app.post('/api/prospects/mail/:id', verifyToken, async (req, res) => {
     const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST || 'smtp.zoho.eu', port: parseInt(process.env.SMTP_PORT || '465'), secure: true, auth: { user: smtpUser, pass: smtpPass } });
     await transporter.sendMail({ from: `"LILIWATT - ${nomComplet}" <${smtpUser}>`, replyTo: vendeur.email, to: emailDest, subject: 'Mandat de gestion energie - LILIWATT', html });
 
-    await prisma.prospect.update({ where: { id }, data: { rgpdEnvoye: true, emailEnvoyeA: emailDest, ...(signataire && { signataire }), ...(emailDest && { email: emailDest }), ...(telephone && { telephone }) } });
+    await prisma.prospect.update({ where: { id }, data: { rgpdEnvoye: true, emailEnvoyeA: emailDest, statutAppel: 'ATTENTE_DOCUMENTS', ...(signataire && { signataire }), ...(emailDest && { email: emailDest }), ...(telephone && { telephone }) } });
     await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'RGPD_SENT', metadata: { destinataire: emailDest, envoyeDe: smtpUser, replyTo: vendeur.email } } });
 
     console.log(`📧 RGPD envoye a ${emailDest} via ${smtpUser} (replyTo: ${vendeur.email})`);

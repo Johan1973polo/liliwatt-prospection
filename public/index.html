@@ -301,8 +301,18 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         <button class="btn btn-sm" onclick="loadLeads()">🔄</button>
       </div>
       <div style="margin-bottom:12px;"><select id="statutFilterLeads" onchange="loadLeads(this.value)" style="padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;font-size:14px;cursor:pointer;min-width:260px;">
-        <option value="all">📂 Toutes (0)</option>
+        <option value="all">💎 Tous les leads (0)</option>
         <option value="favoris">⭐ Favoris (0)</option>
+        <option value="a_appeler">📞 A appeler (0)</option>
+        <option value="appele">✅ Appele (0)</option>
+        <option value="a_rappeler">🔄 A rappeler (0)</option>
+        <option value="interesse">🟢 Interesse (0)</option>
+        <option value="attente_doc">📄 Attente documents (0)</option>
+        <option value="dossier_recu">📦 Dossier recu (0)</option>
+        <option value="client_signe">🏆 Client signe (0)</option>
+        <option value="pas_interesse">❌ Pas interesse (0)</option>
+        <option value="nrp">📵 Ne repond pas (0)</option>
+        <option value="faux_numero">🚫 Faux numero (0)</option>
       </select></div>
       <div id="leadsList"><p style="color:#9ca3af;text-align:center;padding:20px;">Cliquez sur 🔄</p></div>
     </div>
@@ -697,13 +707,18 @@ async function loadLeads(filter){
   const div=document.getElementById('leadsList');div.innerHTML='<p style="color:#9ca3af;text-align:center;padding:20px;">Chargement...</p>';
   try{
     var url='/api/prospects/leads';
-    if(currentLeadsFilter==='favoris')url+='?statut=favoris';
+    if(currentLeadsFilter&&currentLeadsFilter!=='all')url+='?statut='+currentLeadsFilter;
     const r=await fetch(url,{headers:{'Authorization':'Bearer '+token}});
     const d=await r.json();
     // Update dropdown counts
-    var fc=d.favorisCount||0;var total=(d.prospects||[]).length;
+    var sc=d.statusCounts||{};var total=(d.prospects||[]).length;
     var sel=document.getElementById('statutFilterLeads');
-    if(sel){Array.from(sel.options).forEach(function(o){if(o.value==='all')o.text='📂 Toutes ('+total+')';if(o.value==='favoris')o.text='⭐ Favoris ('+fc+')';});sel.value=currentLeadsFilter;}
+    if(sel){
+      var cMap={all:{icon:'💎',label:'Tous les leads'},favoris:{icon:'⭐',label:'Favoris'},a_appeler:{icon:'📞',label:'A appeler',db:'A_APPELER'},appele:{icon:'✅',label:'Appele',db:'APPELE'},a_rappeler:{icon:'🔄',label:'A rappeler',db:'A_RAPPELER'},interesse:{icon:'🟢',label:'Interesse',db:'INTERESSE'},attente_doc:{icon:'📄',label:'Attente documents',db:'ATTENTE_DOCUMENTS'},dossier_recu:{icon:'📦',label:'Dossier recu',db:'DOSSIER_RECU'},client_signe:{icon:'🏆',label:'Client signe',db:'CLIENT_SIGNE'},pas_interesse:{icon:'❌',label:'Pas interesse',db:'PAS_INTERESSE'},nrp:{icon:'📵',label:'Ne repond pas',db:'NE_REPOND_PAS'},faux_numero:{icon:'🚫',label:'Faux numero',db:'FAUX_NUMERO'}};
+      var allTotal=Object.entries(sc).filter(function(e){return e[0]!=='favoris';}).reduce(function(s,e){return s+e[1];},0);
+      Array.from(sel.options).forEach(function(o){var c=cMap[o.value];if(!c)return;var cnt=o.value==='all'?allTotal:(o.value==='favoris'?sc.favoris||0:sc[c.db]||0);o.text=c.icon+' '+c.label+' ('+cnt+')';});
+      sel.value=currentLeadsFilter;
+    }
     renderCards(d.prospects||[], div, 'LEADS OHM');
   }catch(e){div.innerHTML='<p style="color:#ef4444;">Erreur reseau</p>';}
 }
