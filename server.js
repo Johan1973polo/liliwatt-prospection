@@ -923,13 +923,48 @@ app.post('/api/admin/scraper', verifyToken, isAdminMW, async (req, res) => {
   } catch(e) { console.error('Scraper error:', e); res.status(500).json({ error: e.message }); }
 });
 
+// ===== POST /api/admin/scrape-attribuer-preview =====
+app.post('/api/admin/scrape-attribuer-preview', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const { vendeurId, departements, secteurs } = req.body;
+    if (!vendeurId || !departements || !secteurs) return res.status(400).json({ error: 'Params manquants' });
+    const villesFR = require('./data/villes-france.json');
+    const villes = [];
+    for (const dep of departements) { const d = villesFR[dep]; if (d) villes.push(...d.villes.slice(0, 10)); }
+    if (!villes.length) return res.json({ success: true, conflits: [], librePool: 0, dejaAuVendeur: 0 });
+
+    const villeFilters = villes.map(v => ({ ville: { contains: v, mode: 'insensitive' } }));
+    // Fiches d'autres vendeurs
+    const fichesAutres = await prisma.prospect.findMany({
+      where: { OR: villeFilters, vendeurId: { not: null, not: vendeurId } },
+      select: { id: true, ville: true, vendeurId: true, raisonSociale: true }
+    });
+    const parVendeur = {};
+    fichesAutres.forEach(f => {
+      if (!parVendeur[f.vendeurId]) parVendeur[f.vendeurId] = { count: 0, exemples: [] };
+      parVendeur[f.vendeurId].count++;
+      if (parVendeur[f.vendeurId].exemples.length < 3) parVendeur[f.vendeurId].exemples.push(f.raisonSociale + ' (' + f.ville + ')');
+    });
+    const vids = Object.keys(parVendeur);
+    const infos = vids.length ? await prisma.user.findMany({ where: { id: { in: vids } }, select: { id: true, firstName: true, lastName: true, email: true } }) : [];
+    const conflits = infos.map(v => ({ vendeurId: v.id, nom: ((v.firstName || '') + ' ' + (v.lastName || '')).trim() || v.email, email: v.email, count: parVendeur[v.id].count, exemples: parVendeur[v.id].exemples })).sort((a, b) => b.count - a.count);
+
+    const [librePool, dejaAuVendeur] = await Promise.all([
+      prisma.prospect.count({ where: { OR: villeFilters, vendeurId: null } }),
+      prisma.prospect.count({ where: { OR: villeFilters, vendeurId: vendeurId } }),
+    ]);
+
+    res.json({ success: true, conflits, totalConflits: conflits.reduce((s, c) => s + c.count, 0), librePool, dejaAuVendeur, villesScannees: villes.length });
+  } catch(e) { console.error('Preview error:', e); res.status(500).json({ error: e.message }); }
+});
+
 // ===== POST /api/admin/scrape-attribuer =====
 const villesFrance = require('./data/villes-france.json');
 
 app.post('/api/admin/scrape-attribuer', verifyToken, isAdminMW, async (req, res) => {
   try {
-    const { vendeurId, departements, secteurs } = req.body;
-    console.log('[scrape-attribuer] vendeurId:', vendeurId, 'deps:', departements, 'secteurs:', secteurs);
+    const { vendeurId, departements, secteurs, mode = 'skip' } = req.body;
+    console.log('[scrape-attribuer] vendeurId:', vendeurId, 'mode:', mode, 'deps:', departements, 'secteurs:', secteurs);
     if (!vendeurId || vendeurId === 'undefined') return res.status(400).json({ error: 'vendeurId requis' });
     if (!departements?.length) return res.status(400).json({ error: 'Au moins un departement' });
     if (!secteurs?.length) return res.status(400).json({ error: 'Au moins un secteur' });
@@ -985,8 +1020,25 @@ app.post('/api/admin/scrape-attribuer', verifyToken, isAdminMW, async (req, res)
       }
     }
 
+    // Mode 'voler' : reattribuer les fiches d'autres vendeurs
+    let totalVolees = 0;
+    if (mode === 'voler') {
+      for (const dep of departements) {
+        const depData = villesFrance[dep]; if (!depData) continue;
+        for (const ville of depData.villes.slice(0, 10)) {
+          const volees = await prisma.prospect.updateMany({
+            where: { ville: { contains: ville, mode: 'insensitive' }, vendeurId: { not: null, not: vendeurId } },
+            data: { vendeurId: vendeurId }
+          });
+          totalVolees += volees.count;
+        }
+      }
+      totalReassigned += totalVolees;
+      console.log(`🔄 Mode voler: ${totalVolees} fiches transferees`);
+    }
+
     const duration = Math.round((Date.now() - t0) / 1000);
-    try { await prisma.activityLog.create({ data: { userId: req.user.id, type: 'PROSPECT_CREATED_MANUAL', metadata: { action: 'scrape_attribuer', vendeurId, vendeurNom: `${vendeur.firstName} ${vendeur.lastName}`, departements, secteurs: secteursOk, totalInserted, totalReassigned, durationSec: duration } } }); } catch(e) {}
+    try { await prisma.activityLog.create({ data: { userId: req.user.id, type: 'PROSPECT_CREATED_MANUAL', metadata: { action: 'scrape_attribuer', mode, vendeurId, vendeurNom: `${vendeur.firstName} ${vendeur.lastName}`, departements, secteurs: secteursOk, totalInserted, totalReassigned, totalVolees, durationSec: duration } } }); } catch(e) {}
 
     console.log(`✅ Scrape attribue termine: ${totalInserted} inseres, ${totalReassigned} attribues, ${duration}s`);
     res.json({
