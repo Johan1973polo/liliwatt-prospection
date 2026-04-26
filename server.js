@@ -125,9 +125,11 @@ app.put('/api/prospects/:id', verifyToken, async (req, res) => {
 app.get('/api/prospects/mes-fiches', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { statut, search, page = 1, limit = 100 } = req.query;
+    const { statut, search, ville, secteur, page = 1, limit = 100 } = req.query;
     const where = { vendeurId: userId };
-    if (statut && statut !== 'tous') where.statutAppel = statut;
+    if (statut && statut !== 'tous' && statut !== 'all') where.statutAppel = statut;
+    if (ville && ville !== 'all') where.ville = ville;
+    if (secteur && secteur !== 'all') where.secteur = secteur;
     if (search) {
       where.OR = [
         { raisonSociale: { contains: search, mode: 'insensitive' } },
@@ -137,13 +139,24 @@ app.get('/api/prospects/mes-fiches', verifyToken, async (req, res) => {
       ];
     }
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [prospects, total, statsByStatus] = await Promise.all([
+    const [prospects, total, statsByStatus, allForDropdowns] = await Promise.all([
       prisma.prospect.findMany({ where, orderBy: [{ dateRappel: 'asc' }, { updatedAt: 'desc' }], skip, take: parseInt(limit) }),
       prisma.prospect.count({ where }),
       prisma.prospect.groupBy({ by: ['statutAppel'], where: { vendeurId: userId }, _count: true }),
+      prisma.prospect.findMany({ where: { vendeurId: userId }, select: { ville: true, secteur: true } }),
     ]);
     const statusCounts = statsByStatus.reduce((a, s) => { a[s.statutAppel || 'NULL'] = s._count; return a; }, {});
-    res.json({ prospects, total, page: parseInt(page), limit: parseInt(limit), statusCounts });
+
+    // Villes + secteurs uniques avec compteurs
+    const villeMap = {}, secteurMap = {};
+    allForDropdowns.forEach(f => {
+      if (f.ville) villeMap[f.ville] = (villeMap[f.ville] || 0) + 1;
+      if (f.secteur) secteurMap[f.secteur] = (secteurMap[f.secteur] || 0) + 1;
+    });
+    const villesDisponibles = Object.entries(villeMap).map(([v, c]) => ({ ville: v, count: c })).sort((a, b) => b.count - a.count);
+    const secteursDisponibles = Object.entries(secteurMap).map(([s, c]) => ({ secteur: s, count: c })).sort((a, b) => b.count - a.count);
+
+    res.json({ prospects, total, page: parseInt(page), limit: parseInt(limit), statusCounts, villesDisponibles, secteursDisponibles });
   } catch(e) { console.error('Mes-fiches error:', e); res.status(500).json({ error: e.message }); }
 });
 

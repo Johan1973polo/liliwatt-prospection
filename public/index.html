@@ -203,8 +203,11 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         <div id="mesFichesTotal" style="color:#78716c;font-weight:600;font-size:14px;">0 fiches</div>
       </div>
       <div id="mesFichesFiltres" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;"></div>
-      <div style="margin-bottom:20px;">
-        <input type="text" id="mesFichesSearch" placeholder="🔍 Rechercher (nom, ville, telephone)..." style="width:100%;max-width:500px;padding:10px 14px;border:1px solid #e7e5e4;border-radius:10px;font-size:14px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+        <input type="text" id="mesFichesSearch" placeholder="🔍 Rechercher..." style="flex:1;min-width:200px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;">
+        <select id="mesFichesVille" onchange="loadMesFiches()" style="padding:10px;border:1px solid #e5e7eb;border-radius:8px;min-width:180px;font-size:13px;"><option value="all">📍 Toutes les villes</option></select>
+        <select id="mesFichesSecteur" onchange="loadMesFiches()" style="padding:10px;border:1px solid #e5e7eb;border-radius:8px;min-width:180px;font-size:13px;"><option value="all">🏷️ Tous les secteurs</option></select>
+        <button onclick="resetMesFichesFilters()" style="padding:10px 14px;background:#f3f4f6;border:none;border-radius:8px;cursor:pointer;font-size:13px;">↺ Reset</button>
       </div>
       <div id="mesFichesList" style="display:flex;flex-direction:column;gap:10px;">
         <div style="text-align:center;color:#9ca3af;padding:40px;">Selectionnez cet onglet pour voir vos fiches</div>
@@ -815,15 +818,32 @@ let currentMesFichesStatut='tous',currentMesFichesSearch='';
 async function loadMesFiches(){
   try{
     var params=new URLSearchParams();
-    if(currentMesFichesStatut&&currentMesFichesStatut!=='tous')params.set('statut',currentMesFichesStatut);
+    if(currentMesFichesStatut&&currentMesFichesStatut!=='tous'&&currentMesFichesStatut!=='all')params.set('statut',currentMesFichesStatut);
     if(currentMesFichesSearch)params.set('search',currentMesFichesSearch);
-    params.set('limit','100');
+    var ville=document.getElementById('mesFichesVille');if(ville&&ville.value&&ville.value!=='all')params.set('ville',ville.value);
+    var secteur=document.getElementById('mesFichesSecteur');if(secteur&&secteur.value&&secteur.value!=='all')params.set('secteur',secteur.value);
+    params.set('limit','200');
     var r=await fetch('/api/prospects/mes-fiches?'+params,{headers:{'Authorization':'Bearer '+token}});
     var d=await r.json();
     renderMesFichesFiltres(d.statusCounts,d.total);
     renderMesFichesList(d.prospects);
     updateMesFichesBadge(d.total);
+    populateMesFichesDropdowns(d.villesDisponibles,d.secteursDisponibles);
   }catch(e){console.error('loadMesFiches error:',e);}
+}
+function populateMesFichesDropdowns(villes,secteurs){
+  var vs=document.getElementById('mesFichesVille'),ss=document.getElementById('mesFichesSecteur');
+  if(!vs||!ss)return;
+  var cv=vs.value,cs=ss.value;
+  vs.innerHTML='<option value="all">📍 Toutes les villes</option>';
+  (villes||[]).forEach(function(v){var o=document.createElement('option');o.value=v.ville;o.textContent=v.ville+' ('+v.count+')';if(v.ville===cv)o.selected=true;vs.appendChild(o);});
+  ss.innerHTML='<option value="all">🏷️ Tous les secteurs</option>';
+  var icons={'Restaurant':'🍽️','Hotel':'🏨','Boulangerie':'🥖','Camping':'⛺','Laverie':'🧺','Garage automobile':'🔧','Supermarche':'🛒','Salle de sport':'💪','Spa':'💆','Bar':'🍺','Pressing':'👔','Piscine':'🏊'};
+  (secteurs||[]).forEach(function(s){var o=document.createElement('option');o.value=s.secteur;o.textContent=(icons[s.secteur]||'📌')+' '+s.secteur+' ('+s.count+')';if(s.secteur===cs)o.selected=true;ss.appendChild(o);});
+}
+function resetMesFichesFilters(){
+  document.getElementById('mesFichesSearch').value='';document.getElementById('mesFichesVille').value='all';document.getElementById('mesFichesSecteur').value='all';
+  currentMesFichesStatut='tous';currentMesFichesSearch='';loadMesFiches();
 }
 function updateMesFichesBadge(total){
   var b=document.getElementById('mesFichesBadge');
