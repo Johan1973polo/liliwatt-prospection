@@ -292,12 +292,14 @@ app.get('/api/kpis', verifyToken, async (req, res) => {
     const interesses = myProspects.filter(p => p.statutAppel === 'INTERESSE').length;
     const rappels = myProspects.filter(p => p.statutAppel === 'A_RAPPELER').length;
     const rgpd = myProspects.filter(p => p.rgpdEnvoye).length;
+    const factures = myProspects.filter(p => ['DOSSIER_RECU', 'CLIENT_SIGNE'].includes(p.statutAppel)).length;
+    const signes = myProspects.filter(p => p.statutAppel === 'CLIENT_SIGNE').length;
 
     const historique = myProspects.filter(p => p.dateDernierAppel).slice(0, 10).map(p => ({
       date: new Date(p.dateDernierAppel).toLocaleString('fr-FR'), nom: p.raisonSociale, statut: p.statutAppel || '', row: p.id,
     }));
 
-    res.json({ success: true, kpis: { total, appels, interesses, rappels, rgpd }, historique });
+    res.json({ success: true, kpis: { total, appels, interesses, rappels, rgpd, factures, signes }, historique });
   } catch(e) { console.error('KPIs error:', e); res.status(500).json({ error: e.message }); }
 });
 

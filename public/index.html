@@ -129,6 +129,22 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         <div class="kpi"><div class="v" id="kInt">0</div><div class="l">✅ Intéressés</div></div>
         <div class="kpi"><div class="v" id="kRap">0</div><div class="l">🔄 À rappeler</div></div>
         <div class="kpi"><div class="v" id="kRgpd">0</div><div class="l">📧 RGPD envoyés</div></div>
+        <div class="kpi"><div class="v" id="kFactures">0</div><div class="l">📄 Factures reçues</div></div>
+        <div class="kpi"><div class="v" style="color:#16a34a;" id="kSignes">0</div><div class="l">🏆 Signés</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px;">
+        <div style="background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.04);border-left:3px solid #7c3aed;">
+          <div style="font-size:11px;color:#6b7280;">Adhesion (RGPD/Appels)</div>
+          <div style="font-size:20px;font-weight:800;color:#7c3aed;" id="kAdhesion">0%</div>
+        </div>
+        <div style="background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.04);border-left:3px solid #f59e0b;">
+          <div style="font-size:11px;color:#6b7280;">Retour (Factures/RGPD)</div>
+          <div style="font-size:20px;font-weight:800;color:#f59e0b;" id="kRetour">0%</div>
+        </div>
+        <div style="background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.04);border-left:3px solid #10b981;">
+          <div style="font-size:11px;color:#6b7280;">Closing (Signes/Factures)</div>
+          <div style="font-size:20px;font-weight:800;color:#10b981;" id="kClosing">0%</div>
+        </div>
       </div>
       <h4 style="color:#1e1b4b;margin-bottom:10px;">Historique récent</h4>
       <div id="histList"><p style="color:#9ca3af;font-size:13px;">Aucune action enregistrée</p></div>
@@ -513,6 +529,14 @@ async function loadKpis(){
     document.getElementById('kInt').textContent=d.kpis.interesses;
     document.getElementById('kRap').textContent=d.kpis.rappels;
     document.getElementById('kRgpd').textContent=d.kpis.rgpd;
+    document.getElementById('kFactures').textContent=d.kpis.factures||0;
+    document.getElementById('kSignes').textContent=d.kpis.signes||0;
+    var adh=d.kpis.appels>0?Math.round((d.kpis.rgpd/d.kpis.appels)*1000)/10:0;
+    var ret=d.kpis.rgpd>0?Math.round((d.kpis.factures/d.kpis.rgpd)*1000)/10:0;
+    var clo=d.kpis.factures>0?Math.round((d.kpis.signes/d.kpis.factures)*1000)/10:0;
+    document.getElementById('kAdhesion').textContent=adh+'%';
+    document.getElementById('kRetour').textContent=ret+'%';
+    document.getElementById('kClosing').textContent=clo+'%';
     const hist=document.getElementById('histList');
     if(d.historique.length){
       hist.innerHTML=d.historique.map(h=>'<div class="hist-item"><span class="date">'+h.date+'</span> — <span class="nom">'+h.nom+'</span> — '+h.statut+'</div>').join('');
