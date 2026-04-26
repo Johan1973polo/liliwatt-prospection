@@ -139,6 +139,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
 .kpi-view-btn.active{background:#1c1917!important;color:#fff!important}.kpi-view-btn:not(.active){background:transparent!important;color:#78716c!important}
 @media(max-width:900px){.leader-row{grid-template-columns:30px 1fr auto auto}}
 .favori-btn{background:none;border:none;cursor:pointer;font-size:20px;padding:4px 8px;transition:transform .15s;}.favori-btn:hover{transform:scale(1.2);}
+@keyframes slideIn{from{transform:translateX(400px);opacity:0;}to{transform:translateX(0);opacity:1;}}
 </style>
 </head>
 <body>
@@ -166,6 +167,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
       <button onclick="logout()">Déconnexion</button>
     </div>
   </div>
+  <div id="rappelsBandeau" onclick="showRappelsForce()" style="display:none;background:linear-gradient(90deg,#fef3c7,#fde68a);padding:8px 16px;text-align:center;cursor:pointer;border-bottom:1px solid #f59e0b;"><span style="font-weight:600;color:#78350f;" id="rappelsBandeauText">📅 Rappels</span> <span style="margin-left:8px;color:#7c3aed;font-weight:600;">→ Voir</span></div>
   <div class="tabs">
     <div class="tab active" onclick="showTab('brute')">📋 Base brute</div>
     <div class="tab" onclick="showTab('mesfiches')">📂 Mes fiches <span id="mesFichesBadge" style="background:#7c3aed;color:#fff;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;display:none;">0</span></div>
@@ -560,7 +562,7 @@ function showApp(){
 async function doLogin(){
   const e=document.getElementById('lEmail').value,p=document.getElementById('lPwd').value,err=document.getElementById('lErr');
   try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p})});const d=await r.json();
-  if(d.success){token=d.token;user=d.user;localStorage.setItem('p_token',token);localStorage.setItem('p_user',JSON.stringify(user));showApp();maybeShowRGPDModal();}
+  if(d.success){token=d.token;user=d.user;localStorage.setItem('p_token',token);localStorage.setItem('p_user',JSON.stringify(user));showApp();maybeShowRGPDModal();setTimeout(function(){showRappelsModalIfAny();updateRappelsBandeau();},1500);}
   else{err.style.display='block';err.textContent='❌ '+d.error;}}catch(x){err.style.display='block';err.textContent='Erreur réseau';}
 }
 function logout(){stopHeartbeat();localStorage.removeItem('p_token');localStorage.removeItem('p_user');token=null;user=null;showLogin();}
@@ -1329,7 +1331,9 @@ function openFicheInDrawer(p) {
   // Action commerciale
   var st = (p.statut_appel || p.statutAppel || 'A_APPELER').replace(/\s/g,'_').toUpperCase();
   document.getElementById('drawerStatut').value = st;
-  document.getElementById('drawerDateRappel').value = p.dateRappel ? new Date(p.dateRappel).toISOString().slice(0,10) : (p.date_rappel || '');
+  var drp = p.dateRappel || p.date_rappel;
+  if (drp) { var dd = new Date(drp); document.getElementById('drawerDateRappel').value = dd.toISOString().slice(0,10); document.getElementById('drawerHeureRappel').value = dd.toTimeString().substring(0,5); }
+  else { document.getElementById('drawerDateRappel').value = ''; document.getElementById('drawerHeureRappel').value = '09:00'; }
   document.getElementById('drawerNotes').value = p.note_appel || p.noteAppel || '';
   // RGPD
   var rgpd = p.rgpdEnvoye || p.rgpd_envoye === 'oui';
@@ -1374,7 +1378,7 @@ async function saveDrawerChanges() {
   try {
     var payload = {
       statutAppel: document.getElementById('drawerStatut').value || null,
-      dateRappel: document.getElementById('drawerDateRappel').value || null,
+      dateRappel: document.getElementById('drawerDateRappel').value ? (document.getElementById('drawerDateRappel').value + 'T' + (document.getElementById('drawerHeureRappel').value || '09:00') + ':00') : null,
       noteAppel: document.getElementById('drawerNotes').value || null,
       raisonSociale: document.getElementById('drawerRaisonSociale').value || null,
       signataire: document.getElementById('drawerSignataire').value || null,
@@ -1447,7 +1451,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <option value="CLIENT_SIGNE">🏆 Client signe</option><option value="PAS_INTERESSE">❌ Pas interesse</option><option value="NE_REPOND_PAS">📵 Ne repond pas</option><option value="FAUX_NUMERO">🚫 Faux numero</option>
       </select>
       <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">📅 Date de rappel</label>
-      <input type="date" id="drawerDateRappel" style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;margin-bottom:14px;font-size:14px;">
+      <div style="display:flex;gap:8px;margin-bottom:14px;"><input type="date" id="drawerDateRappel" style="flex:1;padding:10px;border:1px solid #e7e5e4;border-radius:8px;font-size:14px;"><input type="time" id="drawerHeureRappel" value="09:00" style="width:110px;padding:10px;border:1px solid #e7e5e4;border-radius:8px;font-size:14px;"></div>
       <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">📝 Notes d'appel</label>
       <textarea id="drawerNotes" rows="3" placeholder="Ce qu'il s'est dit..." style="width:100%;padding:10px;border:1px solid #e7e5e4;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;margin-bottom:14px;"></textarea>
     </div>
@@ -1739,6 +1743,45 @@ function maybeShowRGPDModal(){
   document.body.appendChild(ov);
   document.getElementById('rgpdOk').onclick=function(){localStorage.setItem('liliwatt_rgpd_seen','1');document.body.removeChild(ov);};
 }
+
+// ===== RAPPELS =====
+async function checkRappelsJour(){if(!token)return null;try{var r=await fetch('/api/me/rappels-jour',{headers:{'Authorization':'Bearer '+token}});return await r.json();}catch(e){return null;}}
+async function showRappelsModalIfAny(){
+  if(sessionStorage.getItem('rappels_seen_today'))return;
+  var data=await checkRappelsJour();if(!data||data.total===0)return;
+  sessionStorage.setItem('rappels_seen_today','1');
+  function rr(r,badge){var t=new Date(r.dateRappel).toTimeString().substring(0,5);return '<div onclick="openFicheById(\''+r.id+'\');document.getElementById(\'rappelsOv\').remove();" style="cursor:pointer;padding:12px;border-bottom:1px solid #f3f4f6;" onmouseover="this.style.background=\'#f9fafb\'" onmouseout="this.style.background=\'#fff\'"><div style="display:flex;justify-content:space-between;align-items:center;"><div><div style="font-weight:600;">'+r.raisonSociale+'</div><div style="font-size:12px;color:#6b7280;">'+(r.ville||'')+' · '+(r.telephone||'')+'</div></div><div style="text-align:right;">'+badge+'<div style="font-size:14px;font-weight:600;color:#7c3aed;margin-top:2px;">'+t+'</div></div></div></div>';}
+  var h='<div style="max-height:400px;overflow-y:auto;">';
+  if(data.enRetard.length)h+='<h4 style="margin:8px 0;color:#dc2626;">⚠️ En retard ('+data.enRetard.length+')</h4>'+data.enRetard.map(function(r){return rr(r,'<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:11px;">RETARD</span>');}).join('');
+  if(data.aujourdhui.length)h+='<h4 style="margin:8px 0;color:#f59e0b;">🔔 Maintenant ('+data.aujourdhui.length+')</h4>'+data.aujourdhui.map(function(r){return rr(r,'<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;">NOW</span>');}).join('');
+  if(data.aVenir.length)h+='<h4 style="margin:8px 0;color:#10b981;">📅 Plus tard ('+data.aVenir.length+')</h4>'+data.aVenir.map(function(r){return rr(r,'');}).join('');
+  h+='</div>';
+  var ov=document.createElement('div');ov.id='rappelsOv';ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:5000;padding:20px;';
+  ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:24px;max-width:600px;width:100%;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;"><h2 style="margin:0;">📅 Rappels du jour ('+data.total+')</h2><button onclick="document.getElementById(\'rappelsOv\').remove();" style="background:none;border:none;font-size:24px;cursor:pointer;">×</button></div>'+h+'<div style="margin-top:16px;text-align:center;"><button onclick="document.getElementById(\'rappelsOv\').remove();" style="padding:10px 20px;background:#7c3aed;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">C\'est parti 🚀</button></div></div>';
+  document.body.appendChild(ov);
+}
+function showRappelsForce(){sessionStorage.removeItem('rappels_seen_today');showRappelsModalIfAny();}
+async function updateRappelsBandeau(){
+  var data=await checkRappelsJour();var b=document.getElementById('rappelsBandeau');if(!b)return;
+  if(data&&data.total>0){b.style.display='block';var ret=data.enRetard.length>0?' ('+data.enRetard.length+' en retard)':'';document.getElementById('rappelsBandeauText').textContent='📅 '+data.total+' rappel'+(data.total>1?'s':'')+' aujourd\'hui'+ret;}
+  else{b.style.display='none';}
+}
+var _rappelsNotified=new Set();
+async function checkUpcomingRappels(){
+  var data=await checkRappelsJour();if(!data||!data.aVenir)return;
+  var now=Date.now();
+  for(var i=0;i<data.aVenir.length;i++){var r=data.aVenir[i];var rt=new Date(r.dateRappel).getTime();
+    if(rt>now&&rt<=now+5*60000&&!_rappelsNotified.has(r.id+'_5')){var ml=Math.ceil((rt-now)/60000);showToast('⏰ Rappel dans '+ml+' min : '+r.raisonSociale,r.id);_rappelsNotified.add(r.id+'_5');}
+    if(rt<=now+30000&&rt>now-60000&&!_rappelsNotified.has(r.id+'_now')){showToast('🔔 RAPPEL : '+r.raisonSociale,r.id,true);_rappelsNotified.add(r.id+'_now');}
+  }
+}
+function showToast(msg,pid,urgent){
+  var t=document.createElement('div');t.style.cssText='position:fixed;top:80px;right:20px;padding:14px 18px;background:'+(urgent?'linear-gradient(135deg,#dc2626,#b91c1c)':'linear-gradient(135deg,#f59e0b,#d97706)')+';color:#fff;border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,.2);cursor:pointer;z-index:6000;max-width:340px;animation:slideIn .3s ease-out;';
+  t.innerHTML='<div style="font-weight:600;margin-bottom:4px;">'+msg+'</div><div style="font-size:12px;opacity:.9;">Cliquer pour ouvrir</div>';
+  t.onclick=function(){if(pid&&typeof openFicheById==='function')openFicheById(pid);t.remove();};
+  document.body.appendChild(t);setTimeout(function(){t.remove();},30000);
+}
+setInterval(checkUpcomingRappels,60000);setInterval(updateRappelsBandeau,300000);
 </script>
 </body>
 </html>

@@ -124,6 +124,28 @@ app.get('/api/me/presence', verifyToken, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== GET /api/me/rappels-jour =====
+app.get('/api/me/rappels-jour', verifyToken, async (req, res) => {
+  try {
+    const uid = req.user.id; const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const rappels = await prisma.prospect.findMany({
+      where: { vendeurId: uid, statutAppel: 'A_RAPPELER', dateRappel: { not: null, lt: tomorrow } },
+      orderBy: { dateRappel: 'asc' },
+      select: { id: true, raisonSociale: true, ville: true, telephone: true, dateRappel: true, signataire: true, score: true, source: true }
+    });
+    const enRetard = [], aujourdhui = [], aVenir = [];
+    for (const r of rappels) {
+      const d = new Date(r.dateRappel);
+      if (d < today) enRetard.push(r);
+      else if (d <= now) aujourdhui.push(r);
+      else aVenir.push(r);
+    }
+    res.json({ success: true, total: rappels.length, enRetard, aujourdhui, aVenir });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== GET /api/prospects/:id =====
 app.get('/api/prospects/detail/:id', verifyToken, async (req, res) => {
   try {
