@@ -670,7 +670,7 @@ const SECTEURS_FR = {
   'Spa / Bien-être':'Spa / Bien-être','Bar / Discothèque':'Bar / Discothèque','Camping / Gîte':'Camping / Gîte'
 };
 function secteurFR(s){return SECTEURS_FR[s]||s||'—';}
-function isAdmin(){return user && (user.role==='admin'||user.email==='johan.mallet@liliwatt.fr'||user.email==='kevin.moreau@liliwatt.fr');}
+function isAdmin(){return user && user.role==='admin';}
 
 if (token && user && user.role) { showApp(); } else if (token) { console.log('User cache obsolete, deconnexion forcee'); localStorage.removeItem('p_token'); localStorage.removeItem('p_user'); token=null; user=null; showLogin(); } else { showLogin(); }
 
