@@ -631,6 +631,68 @@ app.get('/api/kpis/team', verifyToken, async (req, res) => {
   } catch(e) { console.error('Team KPIs error:', e); res.status(500).json({ error: e.message }); }
 });
 
+// ===== GET /api/referent/mon-equipe =====
+app.get('/api/referent/mon-equipe', verifyToken, async (req, res) => {
+  try {
+    const role = (req.user.role || '').toLowerCase();
+    if (role !== 'referent' && role !== 'admin') return res.status(403).json({ error: 'Acces refuse' });
+
+    const userId = req.user.id;
+    // Vendeurs directs + sous-referents
+    const sousRefs = await prisma.user.findMany({ where: { referentId: userId, role: 'REFERENT', isActive: true }, select: { id: true } });
+    const sousRefIds = sousRefs.map(r => r.id);
+    const vendeurs = await prisma.user.findMany({
+      where: { role: 'VENDEUR', isActive: true, OR: [{ referentId: userId }, ...(sousRefIds.length ? [{ referentId: { in: sousRefIds } }] : [])] },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true, lastSeen: true }
+    });
+
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const kpisVendeurs = await Promise.all(vendeurs.map(async v => {
+      const [appels, rgpd, fiches] = await Promise.all([
+        prisma.activityLog.count({ where: { userId: v.id, type: 'CALL', timestamp: { gte: since } } }),
+        prisma.activityLog.count({ where: { userId: v.id, type: 'RGPD_SENT', timestamp: { gte: since } } }),
+        prisma.prospect.count({ where: { vendeurId: v.id } }),
+      ]);
+      const isOnline = v.lastSeen && (Date.now() - new Date(v.lastSeen).getTime()) < 5 * 60 * 1000;
+      return { id: v.id, nom: `${v.firstName || ''} ${v.lastName || ''}`.trim(), email: v.email, phone: v.phone, appels, rgpd, fichesActives: fiches, conversion: appels > 0 ? ((rgpd / appels) * 100).toFixed(1) : '0.0', online: isOnline };
+    }));
+
+    const totaux = { vendeurs: kpisVendeurs.length, appels: kpisVendeurs.reduce((s, v) => s + v.appels, 0), rgpd: kpisVendeurs.reduce((s, v) => s + v.rgpd, 0), fichesActives: kpisVendeurs.reduce((s, v) => s + v.fichesActives, 0) };
+    totaux.conversion = totaux.appels > 0 ? ((totaux.rgpd / totaux.appels) * 100).toFixed(1) : '0.0';
+
+    res.json({ success: true, totauxEquipe: totaux, vendeurs: kpisVendeurs.sort((a, b) => b.appels - a.appels) });
+  } catch(e) { console.error('Mon-equipe error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== GET /api/referent/vendeur/:id/kpis =====
+app.get('/api/referent/vendeur/:id/kpis', verifyToken, async (req, res) => {
+  try {
+    const role = (req.user.role || '').toLowerCase();
+    if (role !== 'referent' && role !== 'admin') return res.status(403).json({ error: 'Acces refuse' });
+
+    const vid = req.params.id;
+    const vendeur = await prisma.user.findUnique({ where: { id: vid }, select: { id: true, firstName: true, lastName: true, email: true, phone: true, referentId: true } });
+    if (!vendeur) return res.status(404).json({ error: 'Vendeur introuvable' });
+    if (role === 'referent' && vendeur.referentId !== req.user.id) return res.status(403).json({ error: 'Pas dans votre equipe' });
+
+    const since7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    async function kpis(since) {
+      const [appels, rgpd] = await Promise.all([
+        prisma.activityLog.count({ where: { userId: vid, type: 'CALL', timestamp: { gte: since } } }),
+        prisma.activityLog.count({ where: { userId: vid, type: 'RGPD_SENT', timestamp: { gte: since } } }),
+      ]);
+      return { appels, rgpd, conversion: appels > 0 ? ((rgpd / appels) * 100).toFixed(1) : '0.0' };
+    }
+    const [k7, k30, topVilles] = await Promise.all([
+      kpis(since7), kpis(since30),
+      prisma.prospect.groupBy({ by: ['ville'], where: { vendeurId: vid }, _count: true, orderBy: { _count: { ville: 'desc' } }, take: 5 }),
+    ]);
+
+    res.json({ success: true, vendeur: { id: vendeur.id, nom: `${vendeur.firstName || ''} ${vendeur.lastName || ''}`.trim(), email: vendeur.email, phone: vendeur.phone }, kpis7d: k7, kpis30d: k30, topVilles: topVilles.map(f => ({ ville: f.ville, count: f._count })) });
+  } catch(e) { console.error('Vendeur kpis error:', e); res.status(500).json({ error: e.message }); }
+});
+
 // ===== POST /api/prospects/manuelle (Neon) =====
 app.post('/api/prospects/manuelle', verifyToken, async (req, res) => {
   try {

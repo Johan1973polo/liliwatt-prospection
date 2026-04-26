@@ -169,6 +169,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
     <div class="tab" onclick="showTab('mesfiches')">📂 Mes fiches <span id="mesFichesBadge" style="background:#7c3aed;color:#fff;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;display:none;">0</span></div>
     <div class="tab" onclick="showTab('leads')">💎 Base Premium</div>
     <div class="tab" onclick="showTab('kpis')">📊 Mes KPIs</div>
+    <div class="tab" id="tabEquipe" style="display:none;" onclick="showTab('equipe')">👥 Mon equipe</div>
     <div class="tab" id="tabAdmin" style="display:none;" onclick="showTab('admin')">⚙️ Admin</div>
   </div>
   <div class="container">
@@ -291,6 +292,11 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
           <div id="teamLeaderboard"><div style="color:#9ca3af;padding:30px;text-align:center;">Chargement...</div></div>
         </div>
       </div>
+    </div>
+
+    <!-- MON EQUIPE (referent) -->
+    <div class="panel" id="tab-equipe">
+      <div id="monEquipeMain"><div style="text-align:center;color:#9ca3af;padding:40px;">Chargement...</div></div>
     </div>
 
     <!-- ADMIN — visible uniquement si role=admin -->
@@ -497,7 +503,30 @@ function isAdmin(){return user && (user.role==='admin'||user.email==='johan.mall
 if (token && user && user.role) { showApp(); } else if (token) { console.log('User cache obsolete, deconnexion forcee'); localStorage.removeItem('p_token'); localStorage.removeItem('p_user'); token=null; user=null; showLogin(); } else { showLogin(); }
 
 function showLogin(){document.getElementById('loginPage').classList.remove('hidden');document.getElementById('appPage').classList.add('hidden');}
-function showApp(){document.getElementById('loginPage').classList.add('hidden');document.getElementById('appPage').classList.remove('hidden');document.getElementById('uName').textContent=user.prenom||user.nom;var r=user.role||'vendeur';document.getElementById('uRole').textContent=isAdmin()?'Admin':(r==='referent'?'Referent':'Vendeur');document.getElementById('tabAdmin').style.display=isAdmin()?'block':'none';if(r==='admin'||r==='referent'){document.getElementById('kpiViewToggle').style.display='block';currentKpiView='team';}else{document.getElementById('kpiViewToggle').style.display='none';currentKpiView='me';}startHeartbeat();loadBrute();loadKpis();}
+function showApp(){
+  document.getElementById('loginPage').classList.add('hidden');document.getElementById('appPage').classList.remove('hidden');
+  document.getElementById('uName').textContent=user.prenom||user.nom;
+  var r=user.role||'vendeur';
+  document.getElementById('uRole').textContent=isAdmin()?'Admin':(r==='referent'?'Referent':'Vendeur');
+  // Role-based tab visibility
+  var tabs=document.querySelectorAll('.tabs .tab');
+  tabs.forEach(function(t){t.style.display='';});// show all first
+  document.getElementById('tabAdmin').style.display=isAdmin()?'':'none';
+  document.getElementById('tabEquipe').style.display=(r==='referent'||r==='admin')?'':'none';
+  if(r==='vendeur'){
+    // Vendeur: hide Base brute, Base Premium
+    tabs[0].style.display='none';// Base brute
+    tabs[2].style.display='none';// Base Premium
+  }
+  if(r==='admin'||r==='referent'){document.getElementById('kpiViewToggle').style.display='block';currentKpiView='team';}
+  else{document.getElementById('kpiViewToggle').style.display='none';currentKpiView='me';}
+  startHeartbeat();
+  // Default tab per role
+  if(r==='vendeur')showTab('mesfiches');
+  else if(r==='referent')showTab('mesfiches');
+  else{showTab('brute');loadBrute();}
+  loadKpis();
+}
 
 async function doLogin(){
   const e=document.getElementById('lEmail').value,p=document.getElementById('lPwd').value,err=document.getElementById('lErr');
@@ -512,7 +541,7 @@ function stopHeartbeat(){if(window._hbInterval){clearInterval(window._hbInterval
 async function pingHB(){if(!token)return;try{await fetch('/api/heartbeat',{method:'POST',headers:{'Authorization':'Bearer '+token}});}catch(e){}}
 
 var currentTab='brute';
-function showTab(n){currentTab=n;document.querySelectorAll('.tab').forEach((t,i)=>{const tabs=['brute','mesfiches','leads','kpis','admin'];t.classList.toggle('active',tabs[i]===n);});document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('tab-'+n).classList.add('active');if(n==='mesfiches')loadMesFiches();if(n==='leads')loadLeads();if(n==='kpis')loadKpis();if(n==='admin'&&isAdmin())loadAdminStats();}
+function showTab(n){currentTab=n;document.querySelectorAll('.tab').forEach((t,i)=>{const tabs=['brute','mesfiches','leads','kpis','equipe','admin'];t.classList.toggle('active',tabs[i]===n);});document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('tab-'+n).classList.add('active');if(n==='mesfiches')loadMesFiches();if(n==='leads')loadLeads();if(n==='kpis')loadKpis();if(n==='equipe')loadMonEquipe();if(n==='admin'&&isAdmin())loadAdminStats();}
 
 // ===== BASE BRUTE =====
 async function loadBrute(){
@@ -885,6 +914,63 @@ document.addEventListener('DOMContentLoaded',function(){
   var s=document.getElementById('mesFichesSearch');
   if(s)s.addEventListener('input',function(e){clearTimeout(window._mfSearchTimer);window._mfSearchTimer=setTimeout(function(){currentMesFichesSearch=e.target.value;loadMesFiches();},300);});
 });
+
+// ===== MON EQUIPE (referent) =====
+var monEquipeData=null;
+async function loadMonEquipe(){
+  var main=document.getElementById('monEquipeMain');if(!main)return;
+  main.innerHTML='<div style="text-align:center;padding:40px;">⏳ Chargement...</div>';
+  try{
+    var r=await fetch('/api/referent/mon-equipe',{headers:{'Authorization':'Bearer '+token}});
+    var d=await r.json();
+    if(!r.ok){main.innerHTML='<div style="padding:20px;color:#dc2626;">❌ '+(d.error||'Erreur')+'</div>';return;}
+    monEquipeData=d;renderMonEquipeGlobal();
+  }catch(e){main.innerHTML='<div style="padding:20px;color:#dc2626;">❌ '+e.message+'</div>';}
+}
+function kpiCard(label,value,color){return '<div style="background:#fff;padding:16px;border-radius:12px;border-left:4px solid '+color+';box-shadow:0 1px 3px rgba(0,0,0,.04);"><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">'+label+'</div><div style="font-size:26px;font-weight:700;color:'+color+';">'+value+'</div></div>';}
+function renderMonEquipeGlobal(){
+  if(!monEquipeData)return;var t=monEquipeData.totauxEquipe,vs=monEquipeData.vendeurs;
+  var main=document.getElementById('monEquipeMain');
+  var h='<div style="padding:24px;max-width:1100px;margin:0 auto;">';
+  h+='<h1 style="margin:0 0 4px;">👥 Mon equipe</h1><p style="color:#6b7280;margin:0 0 24px;">Performance des 30 derniers jours</p>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:30px;">';
+  h+=kpiCard('👤 Vendeurs',t.vendeurs,'#7c3aed');
+  h+=kpiCard('📞 Appels',t.appels,'#3b82f6');
+  h+=kpiCard('📧 RGPD envoyes',t.rgpd,'#f59e0b');
+  h+=kpiCard('📂 Fiches actives',t.fichesActives,'#10b981');
+  h+=kpiCard('🎯 Conversion',t.conversion+'%','#ec4899');
+  h+='</div>';
+  h+='<h2 style="margin:0 0 14px;">Mes vendeurs</h2><div style="display:grid;gap:12px;">';
+  vs.forEach(function(v){
+    var onl=v.online?'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;margin-right:6px;box-shadow:0 0 6px rgba(16,185,129,.5);"></span>':'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d6d3d1;margin-right:6px;"></span>';
+    h+='<div onclick="loadVendeurDetail(\''+v.id+'\')" style="cursor:pointer;padding:18px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;transition:all .15s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 14px rgba(0,0,0,.08)\'" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\'none\'">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;"><div>';
+    h+='<h3 style="margin:0 0 4px;font-size:17px;">'+onl+(v.nom||v.email)+'</h3>';
+    h+='<p style="margin:0;color:#6b7280;font-size:13px;">'+v.email+(v.phone?' · '+v.phone:'')+'</p></div>';
+    h+='<div style="text-align:right;"><div style="font-size:13px;color:#6b7280;">📞 '+v.appels+' · 📧 '+v.rgpd+'</div>';
+    h+='<div style="font-size:13px;color:#7c3aed;font-weight:600;margin-top:4px;">'+v.conversion+'% conversion</div></div></div>';
+    h+='<div style="margin-top:10px;font-size:12px;color:#9ca3af;">'+v.fichesActives+' fiches actives · Cliquer pour le detail →</div></div>';
+  });
+  h+='</div></div>';main.innerHTML=h;
+}
+async function loadVendeurDetail(vid){
+  var main=document.getElementById('monEquipeMain');if(!main)return;
+  main.innerHTML='<div style="text-align:center;padding:40px;">⏳ Chargement...</div>';
+  try{
+    var r=await fetch('/api/referent/vendeur/'+vid+'/kpis',{headers:{'Authorization':'Bearer '+token}});
+    var d=await r.json();if(!r.ok){main.innerHTML='<div style="padding:20px;color:#dc2626;">❌ '+(d.error||'Erreur')+'</div>';return;}
+    var v=d.vendeur,k7=d.kpis7d,k30=d.kpis30d,tv=d.topVilles;
+    var h='<div style="padding:24px;max-width:1100px;margin:0 auto;">';
+    h+='<button onclick="renderMonEquipeGlobal()" style="background:#f3f4f6;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;margin-bottom:16px;">← Retour</button>';
+    h+='<h1 style="margin:0 0 4px;">👤 '+(v.nom||v.email)+'</h1><p style="color:#6b7280;margin:0 0 24px;">'+v.email+(v.phone?' · '+v.phone:'')+'</p>';
+    h+='<h3 style="margin:0 0 10px;">📊 7 derniers jours</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">';
+    h+=kpiCard('📞 Appels',k7.appels,'#3b82f6')+kpiCard('📧 RGPD',k7.rgpd,'#f59e0b')+kpiCard('🎯 Conversion',k7.conversion+'%','#ec4899')+'</div>';
+    h+='<h3 style="margin:0 0 10px;">📊 30 derniers jours</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">';
+    h+=kpiCard('📞 Appels',k30.appels,'#3b82f6')+kpiCard('📧 RGPD',k30.rgpd,'#f59e0b')+kpiCard('🎯 Conversion',k30.conversion+'%','#ec4899')+'</div>';
+    if(tv&&tv.length){h+='<h3 style="margin:0 0 10px;">📍 Top villes prospectees</h3><div style="background:#fff;padding:16px;border-radius:12px;border:1px solid #e5e7eb;">';tv.forEach(function(vl,i){h+='<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f3f4f6;"><span>#'+(i+1)+' '+vl.ville+'</span><strong>'+vl.count+' fiches</strong></div>';});h+='</div>';}
+    h+='</div>';main.innerHTML=h;
+  }catch(e){main.innerHTML='<div style="padding:20px;color:#dc2626;">❌ '+e.message+'</div>';}
+}
 
 // ===== ADMIN =====
 function showAdminSub(name) {
