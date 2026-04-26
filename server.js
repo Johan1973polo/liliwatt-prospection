@@ -107,14 +107,20 @@ app.post('/api/heartbeat', verifyToken, async (req, res) => {
 // ===== GET /api/me/presence =====
 app.get('/api/me/presence', verifyToken, async (req, res) => {
   try {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const sessions = await prisma.workSession.findMany({ where: { userId: req.user.id, date: today }, select: { startedAt: true, endedAt: true, durationMinutes: true } });
-    let totalMin = 0;
-    for (const s of sessions) {
-      if (s.durationMinutes) totalMin += s.durationMinutes;
-      else if (!s.endedAt) totalMin += Math.round((Date.now() - new Date(s.startedAt).getTime()) / 60000);
+    const uid = req.user.id;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(today); const wd = weekStart.getDay() || 7; weekStart.setDate(weekStart.getDate() - wd + 1);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    async function sumMin(since) {
+      const ss = await prisma.workSession.findMany({ where: { userId: uid, date: { gte: since } }, select: { startedAt: true, endedAt: true, durationMinutes: true } });
+      let t = 0; for (const s of ss) { if (s.durationMinutes) t += s.durationMinutes; else if (!s.endedAt) t += Math.round((Date.now() - new Date(s.startedAt).getTime()) / 60000); } return t;
     }
-    res.json({ success: true, totalMinutesToday: totalMin, sessionsCount: sessions.length });
+    const [todayMin, weekMin, monthMin] = await Promise.all([sumMin(today), sumMin(weekStart), sumMin(monthStart)]);
+    const sessionsToday = await prisma.workSession.findMany({ where: { userId: uid, date: today }, orderBy: { startedAt: 'asc' }, select: { startedAt: true, endedAt: true, durationMinutes: true } });
+
+    res.json({ success: true, today: todayMin, week: weekMin, month: monthMin, sessionsToday: sessionsToday.map(s => ({ start: s.startedAt, end: s.endedAt, duration: s.durationMinutes, active: !s.endedAt })) });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -705,14 +711,22 @@ app.get('/api/referent/mon-equipe', verifyToken, async (req, res) => {
     });
 
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const todayD = new Date(); todayD.setHours(0, 0, 0, 0);
+    const weekD = new Date(todayD); const wdx = weekD.getDay() || 7; weekD.setDate(weekD.getDate() - wdx + 1);
+
     const kpisVendeurs = await Promise.all(vendeurs.map(async v => {
-      const [appels, rgpd, fiches] = await Promise.all([
+      const [appels, rgpd, fiches, sessToday, sessWeek] = await Promise.all([
         prisma.activityLog.count({ where: { userId: v.id, type: 'CALL', timestamp: { gte: since } } }),
         prisma.activityLog.count({ where: { userId: v.id, type: 'RGPD_SENT', timestamp: { gte: since } } }),
         prisma.prospect.count({ where: { vendeurId: v.id } }),
+        prisma.workSession.findMany({ where: { userId: v.id, date: todayD }, select: { startedAt: true, endedAt: true, durationMinutes: true } }),
+        prisma.workSession.findMany({ where: { userId: v.id, date: { gte: weekD } }, select: { startedAt: true, endedAt: true, durationMinutes: true } }),
       ]);
-      const isOnline = v.lastSeen && (Date.now() - new Date(v.lastSeen).getTime()) < 5 * 60 * 1000;
-      return { id: v.id, nom: `${v.firstName || ''} ${v.lastName || ''}`.trim(), email: v.email, phone: v.phone, appels, rgpd, fichesActives: fiches, conversion: appels > 0 ? ((rgpd / appels) * 100).toFixed(1) : '0.0', online: isOnline };
+      let minToday = 0; for (const s of sessToday) { if (s.durationMinutes) minToday += s.durationMinutes; else if (!s.endedAt) minToday += Math.round((Date.now() - new Date(s.startedAt).getTime()) / 60000); }
+      let minWeek = 0; for (const s of sessWeek) { if (s.durationMinutes) minWeek += s.durationMinutes; else if (!s.endedAt) minWeek += Math.round((Date.now() - new Date(s.startedAt).getTime()) / 60000); }
+      const ageMs = v.lastSeen ? Date.now() - new Date(v.lastSeen).getTime() : Infinity;
+      const connectionStatus = ageMs < 60000 ? 'active' : ageMs < 15 * 60 * 1000 ? 'idle' : 'offline';
+      return { id: v.id, nom: `${v.firstName || ''} ${v.lastName || ''}`.trim(), email: v.email, phone: v.phone, appels, rgpd, fichesActives: fiches, conversion: appels > 0 ? ((rgpd / appels) * 100).toFixed(1) : '0.0', online: connectionStatus === 'active', connectionStatus, minutesToday: minToday, minutesWeek: minWeek };
     }));
 
     const totaux = { vendeurs: kpisVendeurs.length, appels: kpisVendeurs.reduce((s, v) => s + v.appels, 0), rgpd: kpisVendeurs.reduce((s, v) => s + v.rgpd, 0), fichesActives: kpisVendeurs.reduce((s, v) => s + v.fichesActives, 0) };
@@ -1106,6 +1120,47 @@ app.post('/api/admin/scrape-attribuer', verifyToken, isAdminMW, async (req, res)
       message: `${totalInserted + totalReassigned} fiches attribuees a ${vendeur.firstName} en ${duration}s`
     });
   } catch(e) { console.error('Scrape-attribuer error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== ACTIVITE GLOBALE (admin) =====
+app.get('/api/admin/activite-globale', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const weekStart = new Date(today); const wd2 = weekStart.getDay() || 7; weekStart.setDate(weekStart.getDate() - wd2 + 1);
+    const users = await prisma.user.findMany({ where: { isActive: true }, select: { id: true, firstName: true, lastName: true, email: true, role: true, lastSeen: true } });
+
+    const enriched = await Promise.all(users.map(async u => {
+      const [sT, sW] = await Promise.all([
+        prisma.workSession.findMany({ where: { userId: u.id, date: today }, select: { startedAt: true, endedAt: true, durationMinutes: true } }),
+        prisma.workSession.findMany({ where: { userId: u.id, date: { gte: weekStart } }, select: { startedAt: true, endedAt: true, durationMinutes: true } }),
+      ]);
+      let mT = 0; for (const s of sT) { if (s.durationMinutes) mT += s.durationMinutes; else if (!s.endedAt) mT += Math.round((Date.now() - new Date(s.startedAt).getTime()) / 60000); }
+      let mW = 0; for (const s of sW) { if (s.durationMinutes) mW += s.durationMinutes; else if (!s.endedAt) mW += Math.round((Date.now() - new Date(s.startedAt).getTime()) / 60000); }
+      const age = u.lastSeen ? Date.now() - new Date(u.lastSeen).getTime() : Infinity;
+      return { id: u.id, nom: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email, email: u.email, role: u.role, minutesToday: mT, minutesWeek: mW, connectionStatus: age < 60000 ? 'active' : age < 15 * 60 * 1000 ? 'idle' : 'offline' };
+    }));
+
+    const connectedNow = enriched.filter(u => u.connectionStatus === 'active').length;
+    const avgMin = enriched.length > 0 ? Math.round(enriched.reduce((s, u) => s + u.minutesToday, 0) / enriched.length) : 0;
+    const top = [...enriched].sort((a, b) => b.minutesToday - a.minutesToday)[0];
+
+    res.json({ success: true, stats: { totalUsers: enriched.length, connectedNow, avgMinutesToday: avgMin, topUser: top ? { nom: top.nom, minutes: top.minutesToday } : null }, users: enriched.sort((a, b) => b.minutesToday - a.minutesToday) });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/user/:id/activite', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const uid = req.params.id; const range = req.query.range || 'day';
+    const u = await prisma.user.findUnique({ where: { id: uid }, select: { id: true, firstName: true, lastName: true, email: true, role: true, lastSeen: true } });
+    if (!u) return res.status(404).json({ error: 'User introuvable' });
+    let since = new Date();
+    if (range === 'day') since.setHours(0, 0, 0, 0);
+    else if (range === 'week') { since.setHours(0, 0, 0, 0); const d = since.getDay() || 7; since.setDate(since.getDate() - d + 1); }
+    else since = new Date(since.getFullYear(), since.getMonth(), 1);
+    const sessions = await prisma.workSession.findMany({ where: { userId: uid, date: { gte: since } }, orderBy: { startedAt: 'desc' } });
+    let totalMin = 0; for (const s of sessions) { if (s.durationMinutes) totalMin += s.durationMinutes; else if (!s.endedAt) totalMin += Math.round((Date.now() - new Date(s.startedAt).getTime()) / 60000); }
+    res.json({ success: true, user: { nom: `${u.firstName || ''} ${u.lastName || ''}`.trim(), email: u.email, role: u.role, lastSeen: u.lastSeen }, range, totalMinutes: totalMin, sessionsCount: sessions.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ===== PREMIUM ATTRIBUTION =====
