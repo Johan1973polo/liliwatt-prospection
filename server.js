@@ -587,12 +587,18 @@ app.get('/api/kpis/me', verifyToken, async (req, res) => {
     const dateFilter = getDateRange(period);
     const actWhere = dateFilter ? { userId, timestamp: dateFilter } : { userId };
 
-    const [appels, rgpd, fiches, ventes, factures, pipeline, temps, fichesTraitees, ventesStatut] = await Promise.all([
-      prisma.activityLog.count({ where: { ...actWhere, type: 'CALL' } }),
-      prisma.activityLog.count({ where: { ...actWhere, type: 'RGPD_SENT' } }),
+    // Cumulatif : chaque etape inclut les suivantes (distinct prospectId)
+    const APPELS_TYPES = ['CALL', 'RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED'];
+    const RGPD_TYPES = ['RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED'];
+    const FACTURES_TYPES = ['INVOICE_RECEIVED', 'SALE_SIGNED'];
+    const countDistinct = (types) => prisma.activityLog.findMany({ where: { ...actWhere, type: { in: types } }, select: { prospectId: true }, distinct: ['prospectId'] }).then(r => r.length);
+
+    const [appels, rgpd, factures, ventes, fiches, pipeline, temps, fichesTraitees, ventesStatut] = await Promise.all([
+      countDistinct(APPELS_TYPES),
+      countDistinct(RGPD_TYPES),
+      countDistinct(FACTURES_TYPES),
+      countDistinct(['SALE_SIGNED']),
       prisma.activityLog.count({ where: { ...actWhere, type: 'ATTRIBUTION' } }),
-      prisma.activityLog.count({ where: { ...actWhere, type: 'SALE_SIGNED' } }),
-      prisma.activityLog.count({ where: { ...actWhere, type: 'INVOICE_RECEIVED' } }),
       prisma.prospect.groupBy({ by: ['statutAppel'], where: { vendeurId: userId }, _count: true }),
       prisma.workSession.aggregate({ where: { userId, startedAt: dateFilter || undefined }, _sum: { durationMinutes: true } }),
       prisma.prospect.count({ where: { vendeurId: userId, signataire: { not: null } } }),
@@ -654,12 +660,13 @@ app.get('/api/kpis/me/funnel', verifyToken, async (req, res) => {
     const dateFilter = getDateRange(period);
     const w = dateFilter ? { userId, timestamp: dateFilter } : { userId };
 
+    const countD = (types) => prisma.activityLog.findMany({ where: { ...w, type: { in: types } }, select: { prospectId: true }, distinct: ['prospectId'] }).then(r => r.length);
     const [fiches, appels, rgpd, factures, ventes] = await Promise.all([
       prisma.activityLog.count({ where: { ...w, type: 'ATTRIBUTION' } }),
-      prisma.activityLog.count({ where: { ...w, type: 'CALL' } }),
-      prisma.activityLog.count({ where: { ...w, type: 'RGPD_SENT' } }),
-      prisma.activityLog.count({ where: { ...w, type: 'INVOICE_RECEIVED' } }),
-      prisma.activityLog.count({ where: { ...w, type: 'SALE_SIGNED' } }),
+      countD(['CALL', 'RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
+      countD(['RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
+      countD(['INVOICE_RECEIVED', 'SALE_SIGNED']),
+      countD(['SALE_SIGNED']),
     ]);
 
     res.json({
@@ -700,11 +707,12 @@ app.get('/api/kpis/team', verifyToken, async (req, res) => {
     if (!vendeurIds.length) return res.json({ teamLabel, period, vendeurCount: 0, counters: { appels: 0, rgpd: 0, factures: 0, ventes: 0, fichesPrises: 0, fichesTraitees: 0, ventesStatut: 0 }, ratios: { adhesion: { value: 0, color: 'red' }, retourFacture: { value: 0, color: 'red' }, closing: { value: 0, color: 'red' } }, leaderboard: [] });
 
     const actW = dateFilter ? { userId: { in: vendeurIds }, timestamp: dateFilter } : { userId: { in: vendeurIds } };
+    const countDT = (types) => prisma.activityLog.findMany({ where: { ...actW, type: { in: types } }, select: { prospectId: true }, distinct: ['prospectId'] }).then(r => r.length);
     const [appels, rgpd, factures, ventes, fiches, fichesTraitees, ventesStatut] = await Promise.all([
-      prisma.activityLog.count({ where: { ...actW, type: 'CALL' } }),
-      prisma.activityLog.count({ where: { ...actW, type: 'RGPD_SENT' } }),
-      prisma.activityLog.count({ where: { ...actW, type: 'INVOICE_RECEIVED' } }),
-      prisma.activityLog.count({ where: { ...actW, type: 'SALE_SIGNED' } }),
+      countDT(['CALL', 'RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
+      countDT(['RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
+      countDT(['INVOICE_RECEIVED', 'SALE_SIGNED']),
+      countDT(['SALE_SIGNED']),
       prisma.activityLog.count({ where: { ...actW, type: 'ATTRIBUTION' } }),
       prisma.prospect.count({ where: { vendeurId: { in: vendeurIds }, signataire: { not: null } } }),
       prisma.prospect.count({ where: { vendeurId: { in: vendeurIds }, statutAppel: 'CLIENT_SIGNE' } }),
@@ -716,11 +724,13 @@ app.get('/api/kpis/team', verifyToken, async (req, res) => {
     function col(v, t) { const th = t === 'adhesion' ? [30,15,5] : [30,20,10]; return v >= th[0] ? 'fire' : v >= th[1] ? 'green' : v >= th[2] ? 'amber' : 'red'; }
 
     const leaderboard = await Promise.all(vendeurIds.map(async vid => {
+      const vidW = dateFilter ? { userId: vid, timestamp: dateFilter } : { userId: vid };
+      const countDV = (types) => prisma.activityLog.findMany({ where: { ...vidW, type: { in: types } }, select: { prospectId: true }, distinct: ['prospectId'] }).then(r => r.length);
       const [u, vA, vR, vV, vT] = await Promise.all([
         prisma.user.findUnique({ where: { id: vid }, select: { id: true, firstName: true, lastName: true, email: true, lastSeen: true } }),
-        prisma.activityLog.count({ where: { userId: vid, type: 'CALL', ...(dateFilter && { timestamp: dateFilter }) } }),
-        prisma.activityLog.count({ where: { userId: vid, type: 'RGPD_SENT', ...(dateFilter && { timestamp: dateFilter }) } }),
-        prisma.activityLog.count({ where: { userId: vid, type: 'SALE_SIGNED', ...(dateFilter && { timestamp: dateFilter }) } }),
+        countDV(['CALL', 'RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
+        countDV(['RGPD_SENT', 'INVOICE_RECEIVED', 'SALE_SIGNED']),
+        countDV(['SALE_SIGNED']),
         prisma.workSession.aggregate({ where: { userId: vid, ...(dateFilter && { startedAt: dateFilter }) }, _sum: { durationMinutes: true } }),
       ]);
       const adh = vA > 0 ? Math.round((vR / vA) * 1000) / 10 : 0;
