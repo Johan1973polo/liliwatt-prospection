@@ -193,6 +193,12 @@ app.put('/api/prospects/:id', verifyToken, async (req, res) => {
         await prisma.activityLog.create({ data: { userId: req.user.id, prospectId: req.params.id, type: 'CALL', metadata: { resultat: data.statutAppel } } });
       }
       await prisma.activityLog.create({ data: { userId: req.user.id, prospectId: req.params.id, type: 'STATUS_CHANGE', metadata: { from: existing.statutAppel, to: data.statutAppel } } });
+      if (data.statutAppel === 'DOSSIER_RECU' && existing.statutAppel !== 'DOSSIER_RECU') {
+        await prisma.activityLog.create({ data: { userId: req.user.id, prospectId: req.params.id, type: 'INVOICE_RECEIVED', metadata: { from: existing.statutAppel } } });
+      }
+      if (data.statutAppel === 'CLIENT_SIGNE' && existing.statutAppel !== 'CLIENT_SIGNE') {
+        await prisma.activityLog.create({ data: { userId: req.user.id, prospectId: req.params.id, type: 'SALE_SIGNED', metadata: { from: existing.statutAppel } } });
+      }
     }
 
     const updated = await prisma.prospect.update({ where: { id: req.params.id }, data });
@@ -412,6 +418,7 @@ app.post('/api/prospects/prendre/:id', verifyToken, async (req, res) => {
 });
 
 // ===== POST /api/prospects/statut/:id (Neon) =====
+// TODO: unifier PUT /api/prospects/:id et POST /api/prospects/statut/:id — 2 routes qui changent statutAppel cree des incoherences
 app.post('/api/prospects/statut/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -430,7 +437,7 @@ app.post('/api/prospects/statut/:id', verifyToken, async (req, res) => {
     };
     const statutEnum = statutMap[statut] || statut;
 
-    const prospect = await prisma.prospect.findUnique({ where: { id }, select: { id: true, vendeurId: true, raisonSociale: true, isVerrouillee: true } });
+    const prospect = await prisma.prospect.findUnique({ where: { id }, select: { id: true, vendeurId: true, raisonSociale: true, isVerrouillee: true, statutAppel: true } });
     if (!prospect) return res.status(404).json({ error: 'Prospect introuvable' });
     if (prospect.vendeurId && prospect.vendeurId !== userId && !isAdminUser) return res.status(403).json({ error: 'Fiche attribuee a un autre vendeur' });
 
@@ -447,6 +454,12 @@ app.post('/api/prospects/statut/:id', verifyToken, async (req, res) => {
     // Log CALL si statut post-appel
     if (['APPELE','INTERESSE','PAS_INTERESSE','NE_REPOND_PAS','A_RAPPELER','FAUX_NUMERO','ATTENTE_DOCUMENTS','DOSSIER_RECU','CLIENT_SIGNE'].includes(statutEnum)) {
       await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'CALL', metadata: { resultat: statutEnum } } });
+    }
+    if (statutEnum === 'DOSSIER_RECU' && prospect.statutAppel !== 'DOSSIER_RECU') {
+      await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'INVOICE_RECEIVED', metadata: { from: prospect.statutAppel } } });
+    }
+    if (statutEnum === 'CLIENT_SIGNE' && prospect.statutAppel !== 'CLIENT_SIGNE') {
+      await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'SALE_SIGNED', metadata: { from: prospect.statutAppel } } });
     }
 
     console.log(`📞 ${prospect.raisonSociale}: ${statutEnum} par ${req.user.email}`);
