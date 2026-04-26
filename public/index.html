@@ -836,6 +836,7 @@ async function saveStatut(){
   const statut=document.getElementById('mSt').value;
   const note=document.getElementById('mNote').value;
   const rappelRaw=document.getElementById('mRappelDate').value;
+  if(statut==='À rappeler'&&!rappelRaw){alert('Date et heure de rappel obligatoires');return;}
   const rappel=rappelRaw?new Date(rappelRaw).toISOString():null;
   await fetch('/api/prospects/statut/'+curRow,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({statut,note,date_rappel:rappel,sheet:curSheet})});
   closeM('mStatut');loadBrute();loadKpis();
@@ -1537,9 +1538,13 @@ async function saveDrawerChanges() {
   var btn = document.getElementById('drawerSaveBtn');
   btn.disabled = true; btn.innerText = '⏳ Enregistrement...';
   try {
+    var stVal = document.getElementById('drawerStatut').value;
+    var drVal = document.getElementById('drawerDateRappel').value;
+    var hrVal = document.getElementById('drawerHeureRappel').value;
+    if (stVal === 'A_RAPPELER' && (!drVal || !hrVal)) { alert('Date et heure de rappel obligatoires'); btn.disabled = false; btn.innerText = '💾 Enregistrer tous les changements'; return; }
     var payload = {
-      statutAppel: document.getElementById('drawerStatut').value || null,
-      dateRappel: document.getElementById('drawerDateRappel').value ? new Date(document.getElementById('drawerDateRappel').value + 'T' + (document.getElementById('drawerHeureRappel').value || '09:00') + ':00').toISOString() : null,
+      statutAppel: stVal || null,
+      dateRappel: drVal ? new Date(drVal + 'T' + (hrVal || '09:00') + ':00').toISOString() : null,
       noteAppel: document.getElementById('drawerNotes').value || null,
       raisonSociale: document.getElementById('drawerRaisonSociale').value || null,
       signataire: document.getElementById('drawerSignataire').value || null,
