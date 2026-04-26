@@ -1496,6 +1496,30 @@ function closeSideDrawer() {
   document.getElementById('drawerOverlay').style.display = 'none';
   _currentDrawerId = null;
 }
+function getDrawerFiche(){
+  return {
+    raisonSociale:(document.getElementById('drawerRaisonSociale').value||'').trim(),
+    ville:(document.getElementById('drawerVille').value||'').trim(),
+    codePostal:(document.getElementById('drawerCodePostal').value||'').trim(),
+    adresse:(document.getElementById('drawerAdresse').value||'').trim(),
+    siren:(document.getElementById('drawerSiren').value||'').trim()
+  };
+}
+function rechercherGoogle(){
+  var f=getDrawerFiche();if(!f.raisonSociale){alert('Raison sociale requise');return;}
+  var q='"'+f.raisonSociale+'"';if(f.ville)q+=' "'+f.ville+'"';q+=' dirigeant siren';
+  window.open('https://www.google.com/search?q='+encodeURIComponent(q),'_blank','noopener');
+}
+function rechercherPappers(){
+  var f=getDrawerFiche();
+  if(f.siren){window.open('https://www.pappers.fr/entreprise/'+f.siren.replace(/\s/g,''),'_blank','noopener');}
+  else if(f.raisonSociale){window.open('https://www.pappers.fr/recherche?q='+encodeURIComponent(f.raisonSociale+(f.ville?' '+f.ville:'')),'_blank','noopener');}
+  else{alert('Raison sociale ou SIREN requis');}
+}
+function rechercherSociete(){
+  var f=getDrawerFiche();if(!f.raisonSociale){alert('Raison sociale requise');return;}
+  window.open('https://www.societe.com/cgi-bin/search?champs='+encodeURIComponent(f.raisonSociale+(f.ville?' '+f.ville:'')),'_blank','noopener');
+}
 async function saveDrawerChanges() {
   if (!_currentDrawerId) return;
   var btn = document.getElementById('drawerSaveBtn');
@@ -1556,6 +1580,16 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
   </div>
   <div style="padding:24px;">
+    <!-- RECHERCHE EXTERNE -->
+    <div style="margin-bottom:18px;padding:12px;background:#f8f9fb;border-radius:10px;border:1px solid #e5e7eb;">
+      <div style="font-size:11px;letter-spacing:1.5px;font-weight:700;color:#6b7280;margin-bottom:8px;">🔎 RECHERCHER LE DIRIGEANT</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button onclick="rechercherGoogle()" style="padding:8px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">🔍 Google</button>
+        <button onclick="rechercherPappers()" style="padding:8px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">🏢 Pappers</button>
+        <button onclick="rechercherSociete()" style="padding:8px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">🌐 Societe.com</button>
+      </div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:8px;">💡 Trouve le nom du dirigeant et copie-le dans "Signataire"</div>
+    </div>
     <!-- ACTION COMMERCIALE -->
     <div style="margin-bottom:24px;">
       <div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7c3aed;margin-bottom:14px;display:flex;align-items:center;gap:10px;"><span style="width:14px;height:2px;background:#7c3aed;border-radius:99px;"></span>Action commerciale</div>
