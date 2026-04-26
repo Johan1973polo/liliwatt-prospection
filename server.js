@@ -90,6 +90,19 @@ app.get('/api/prospects/detail/:id', verifyToken, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== POST /api/prospects/:id/toggle-favori =====
+app.post('/api/prospects/:id/toggle-favori', verifyToken, async (req, res) => {
+  try {
+    const p = await prisma.prospect.findUnique({ where: { id: req.params.id }, select: { id: true, vendeurId: true, isFavori: true } });
+    if (!p) return res.status(404).json({ error: 'Fiche introuvable' });
+    const role = (req.user.role || '').toLowerCase();
+    if (role !== 'admin' && p.vendeurId !== req.user.id) return res.status(403).json({ error: 'Pas votre fiche' });
+    const v = !p.isFavori;
+    await prisma.prospect.update({ where: { id: req.params.id }, data: { isFavori: v } });
+    res.json({ success: true, isFavori: v });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== PUT /api/prospects/:id =====
 app.put('/api/prospects/:id', verifyToken, async (req, res) => {
   try {
@@ -127,7 +140,8 @@ app.get('/api/prospects/mes-fiches', verifyToken, async (req, res) => {
     const userId = req.user.id;
     const { statut, search, ville, secteur, page = 1, limit = 100 } = req.query;
     const where = { vendeurId: userId, source: { in: ['BRUTE', 'MANUELLE'] } };
-    if (statut && statut !== 'tous' && statut !== 'all') where.statutAppel = statut;
+    if (statut === 'favoris') { where.isFavori = true; }
+    else if (statut && statut !== 'tous' && statut !== 'all') where.statutAppel = statut;
     if (ville && ville !== 'all') where.ville = ville;
     if (secteur && secteur !== 'all') where.secteur = secteur;
     if (search) {
@@ -139,13 +153,15 @@ app.get('/api/prospects/mes-fiches', verifyToken, async (req, res) => {
       ];
     }
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [prospects, total, statsByStatus, allForDropdowns] = await Promise.all([
+    const [prospects, total, statsByStatus, allForDropdowns, favorisCount] = await Promise.all([
       prisma.prospect.findMany({ where, orderBy: [{ dateRappel: 'asc' }, { updatedAt: 'desc' }], skip, take: parseInt(limit) }),
       prisma.prospect.count({ where }),
-      prisma.prospect.groupBy({ by: ['statutAppel'], where: { vendeurId: userId }, _count: true }),
+      prisma.prospect.groupBy({ by: ['statutAppel'], where: { vendeurId: userId, source: { in: ['BRUTE', 'MANUELLE'] } }, _count: true }),
       prisma.prospect.findMany({ where: { vendeurId: userId, source: { in: ['BRUTE', 'MANUELLE'] } }, select: { ville: true, secteur: true } }),
+      prisma.prospect.count({ where: { vendeurId: userId, source: { in: ['BRUTE', 'MANUELLE'] }, isFavori: true } }),
     ]);
     const statusCounts = statsByStatus.reduce((a, s) => { a[s.statutAppel || 'NULL'] = s._count; return a; }, {});
+    statusCounts.favoris = favorisCount;
 
     // Villes + secteurs uniques avec compteurs
     const villeMap = {}, secteurMap = {};
