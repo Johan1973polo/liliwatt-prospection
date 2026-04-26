@@ -1144,6 +1144,67 @@ app.post('/api/admin/scrape-attribuer', verifyToken, isAdminMW, async (req, res)
   } catch(e) { console.error('Scrape-attribuer error:', e); res.status(500).json({ error: e.message }); }
 });
 
+// ===== GERER VENDEURS (admin) =====
+app.get('/api/admin/gerer-vendeurs', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { role: { in: ['VENDEUR', 'REFERENT'] } },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true, role: true, isActive: true, lastSeen: true, referentId: true, createdAt: true },
+      orderBy: [{ isActive: 'desc' }, { firstName: 'asc' }]
+    });
+    const enriched = await Promise.all(users.map(async u => {
+      const fichesCount = await prisma.prospect.count({ where: { vendeurId: u.id } });
+      let referentNom = null;
+      if (u.referentId) { const r = await prisma.user.findUnique({ where: { id: u.referentId }, select: { firstName: true, lastName: true } }); if (r) referentNom = `${r.firstName || ''} ${r.lastName || ''}`.trim(); }
+      return { id: u.id, nom: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email, email: u.email, phone: u.phone, role: u.role, isActive: u.isActive, lastSeen: u.lastSeen, fichesCount, referentNom, createdAt: u.createdAt };
+    }));
+    res.json({ success: true, users: enriched });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/desactiver-vendeur', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const { userId, action, nouveauVendeurId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId requis' });
+    if (!['reattribuer', 'liberer'].includes(action)) return res.status(400).json({ error: 'action invalide' });
+    if (action === 'reattribuer' && !nouveauVendeurId) return res.status(400).json({ error: 'nouveauVendeurId requis' });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, firstName: true, lastName: true, email: true, isActive: true } });
+    if (!user) return res.status(404).json({ error: 'User introuvable' });
+    if (!user.isActive) return res.status(400).json({ error: 'Deja desactive' });
+    if (user.id === req.user.id) return res.status(400).json({ error: 'Impossible de se desactiver soi-meme' });
+
+    const fichesCount = await prisma.prospect.count({ where: { vendeurId: userId } });
+    let reassigned = 0, liberees = 0;
+
+    if (action === 'reattribuer' && fichesCount > 0) {
+      const nv = await prisma.user.findUnique({ where: { id: nouveauVendeurId }, select: { id: true, isActive: true } });
+      if (!nv || !nv.isActive) return res.status(400).json({ error: 'Nouveau vendeur invalide' });
+      const r = await prisma.prospect.updateMany({ where: { vendeurId: userId }, data: { vendeurId: nouveauVendeurId } });
+      reassigned = r.count;
+    } else if (action === 'liberer' && fichesCount > 0) {
+      const r = await prisma.prospect.updateMany({ where: { vendeurId: userId }, data: { vendeurId: null } });
+      liberees = r.count;
+    }
+
+    await prisma.user.update({ where: { id: userId }, data: { isActive: false } });
+    try { await prisma.activityLog.create({ data: { userId: req.user.id, type: 'PROSPECT_REASSIGNED', metadata: { action: 'desactiver_vendeur', vendeurId: userId, vendeurNom: `${user.firstName} ${user.lastName}`, mode: action, nouveauVendeurId, fichesCount, reassigned, liberees } } }); } catch(e) {}
+
+    res.json({ success: true, message: `${user.firstName} desactive. ${reassigned} reattribuees, ${liberees} liberees.`, reassigned, liberees, fichesCount });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/reactiver-vendeur', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId requis' });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, firstName: true, isActive: true } });
+    if (!user) return res.status(404).json({ error: 'User introuvable' });
+    if (user.isActive) return res.status(400).json({ error: 'Deja actif' });
+    await prisma.user.update({ where: { id: userId }, data: { isActive: true } });
+    res.json({ success: true, message: `${user.firstName} reactive. Ses anciennes fiches ne sont pas restaurees.` });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== ACTIVITE GLOBALE (admin) =====
 app.get('/api/admin/activite-globale', verifyToken, isAdminMW, async (req, res) => {
   try {

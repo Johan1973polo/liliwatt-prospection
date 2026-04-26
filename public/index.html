@@ -316,7 +316,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
     <!-- ADMIN — visible uniquement si role=admin -->
     <div class="panel" id="tab-admin">
       <!-- Cartes navigation -->
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;">
         <div onclick="showAdminSub('stats')" id="acard-stats" style="background:#7c3aed;color:#fff;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
           <div style="font-size:32px;margin-bottom:6px;">📊</div>
           <div style="font-weight:700;font-size:14px;">Statistiques</div>
@@ -342,6 +342,16 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
           <div style="font-weight:700;font-size:14px;">Activite</div>
           <div style="font-size:11px;opacity:.85;">Temps de presence</div>
         </div>
+        <div onclick="openGererVendeurs()" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #f59e0b;transition:all .15s;">
+          <div style="font-size:32px;margin-bottom:6px;">⚙️</div>
+          <div style="font-weight:700;font-size:14px;">Vendeurs</div>
+          <div style="font-size:11px;opacity:.85;">Desactiver / reactiver</div>
+        </div>
+      </div>
+      <!-- Gerer vendeurs section -->
+      <div id="gererVendeursSection" style="display:none;margin-top:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;"><h3 style="margin:0;">⚙️ Gerer les vendeurs</h3><button onclick="loadGererVendeurs()" style="padding:6px 12px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;">🔄</button></div>
+        <div id="gererVendeursList" style="display:grid;gap:8px;"></div>
       </div>
       <!-- Activite globale section -->
       <div id="activiteGlobaleSection" style="display:none;margin-top:20px;">
@@ -1102,6 +1112,42 @@ async function loadPresenceKPI(){
   el=document.getElementById('presence-month');if(el)el.textContent=fmtMin(d.month);
   el=document.getElementById('presence-sessions');if(el)el.textContent=(d.sessionsToday?.length||0)+' session(s) aujourd\'hui';
   }catch(e){}
+}
+
+// ===== GERER VENDEURS (admin) =====
+function openGererVendeurs(){var s=document.getElementById('gererVendeursSection');s.style.display=s.style.display==='none'?'block':'none';if(s.style.display==='block')loadGererVendeurs();}
+async function loadGererVendeurs(){
+  try{var r=await fetch('/api/admin/gerer-vendeurs',{headers:{'Authorization':'Bearer '+token}});var d=await r.json();if(!d.success)return;
+  document.getElementById('gererVendeursList').innerHTML=d.users.map(function(u){
+    var badge=u.isActive?'<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;">ACTIF</span>':'<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:11px;">DESACTIVE</span>';
+    var btn=u.isActive?'<button onclick="confirmDesactiver(\''+u.id+'\',\''+u.nom.replace(/'/g,'')+'\','+u.fichesCount+')" style="padding:6px 12px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🚫 Desactiver</button>':'<button onclick="reactiverVendeur(\''+u.id+'\',\''+u.nom.replace(/'/g,'')+'\')" style="padding:6px 12px;background:#10b981;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">✅ Reactiver</button>';
+    return '<div style="padding:14px;background:#fff;border-radius:10px;border:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;"><div style="flex:1;"><div style="display:flex;align-items:center;gap:10px;"><strong>'+u.nom+'</strong>'+badge+'<span style="font-size:11px;color:#6b7280;">'+u.role+'</span></div><div style="font-size:12px;color:#6b7280;margin-top:4px;">'+u.email+(u.phone?' · '+u.phone:'')+(u.referentNom?' · Ref: '+u.referentNom:'')+'</div><div style="font-size:12px;color:#7c3aed;margin-top:2px;">📂 '+u.fichesCount+' fiche'+(u.fichesCount>1?'s':'')+'</div></div><div>'+btn+'</div></div>';
+  }).join('');
+  }catch(e){console.error(e);}
+}
+async function confirmDesactiver(uid,nom,fc){
+  var vActifs=[];
+  try{var r=await fetch('/api/admin/gerer-vendeurs',{headers:{'Authorization':'Bearer '+token}});var d=await r.json();vActifs=d.users.filter(function(v){return v.isActive&&v.id!==uid;});}catch(e){return alert('Erreur');}
+  var opts=vActifs.map(function(v){return '<option value="'+v.id+'">'+v.nom+' ('+v.fichesCount+' fiches)</option>';}).join('');
+  var ov=document.createElement('div');ov.id='desactOv';ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:5000;padding:20px;';
+  ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:28px;max-width:520px;width:100%;"><h2 style="margin:0 0 8px;">🚫 Desactiver '+nom+'</h2><p style="color:#6b7280;font-size:14px;margin-bottom:20px;">'+nom+' a <strong>'+fc+' fiche'+(fc>1?'s':'')+'</strong>. Que faire ?</p><div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;"><label style="padding:14px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;"><input type="radio" name="dAction" value="reattribuer" checked> <strong>🔄 Reattribuer</strong><select id="nvVendeurSel" style="display:block;width:100%;padding:8px;margin-top:8px;border:1px solid #e5e7eb;border-radius:6px;">'+opts+'</select></label><label style="padding:14px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;"><input type="radio" name="dAction" value="liberer"> <strong>🌐 Liberer toutes les fiches</strong><div style="font-size:12px;color:#6b7280;margin-top:4px;">Retournent au pool libre</div></label></div><div style="display:flex;gap:10px;"><button onclick="document.getElementById(\'desactOv\').remove();" style="flex:1;padding:12px;background:#f3f4f6;border:none;border-radius:8px;cursor:pointer;">Annuler</button><button id="desactBtn" onclick="execDesactivation(\''+uid+'\')" style="flex:2;padding:12px;background:#dc2626;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🚫 Confirmer</button></div></div>';
+  document.body.appendChild(ov);
+}
+async function execDesactivation(uid){
+  var action=document.querySelector('input[name="dAction"]:checked').value;
+  var nvId=document.getElementById('nvVendeurSel')?.value;
+  if(action==='reattribuer'&&!nvId){alert('Choisis un vendeur');return;}
+  var btn=document.getElementById('desactBtn');btn.disabled=true;btn.textContent='⏳...';
+  try{var r=await fetch('/api/admin/desactiver-vendeur',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({userId:uid,action:action,nouveauVendeurId:nvId})});var d=await r.json();
+  if(r.ok){alert('✅ '+d.message);document.getElementById('desactOv').remove();loadGererVendeurs();}
+  else{alert('❌ '+(d.error||''));btn.disabled=false;btn.textContent='🚫 Confirmer';}
+  }catch(e){alert('❌ '+e.message);btn.disabled=false;btn.textContent='🚫 Confirmer';}
+}
+async function reactiverVendeur(uid,nom){
+  if(!confirm('Reactiver '+nom+' ?'))return;
+  try{var r=await fetch('/api/admin/reactiver-vendeur',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({userId:uid})});var d=await r.json();
+  if(r.ok){alert('✅ '+d.message);loadGererVendeurs();}else{alert('❌ '+(d.error||''));}
+  }catch(e){alert('❌ '+e.message);}
 }
 
 // ===== ACTIVITE GLOBALE (admin) =====
