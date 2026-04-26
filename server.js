@@ -288,11 +288,15 @@ app.get('/api/kpis', verifyToken, async (req, res) => {
     });
 
     const total = myProspects.length;
-    const appels = myProspects.filter(p => p.statutAppel && p.statutAppel !== 'A_APPELER').length;
+    // Cumulatif : chaque etape inclut toutes les etapes suivantes
+    const APPELES_STATUTS = ['APPELE','INTERESSE','A_RAPPELER','ATTENTE_DOCUMENTS','DOSSIER_RECU','CLIENT_SIGNE'];
+    const RGPD_STATUTS = ['ATTENTE_DOCUMENTS','DOSSIER_RECU','CLIENT_SIGNE'];
+    const FACTURES_STATUTS = ['DOSSIER_RECU','CLIENT_SIGNE'];
+    const appels = myProspects.filter(p => APPELES_STATUTS.includes(p.statutAppel) || p.rgpdEnvoye).length;
     const interesses = myProspects.filter(p => p.statutAppel === 'INTERESSE').length;
     const rappels = myProspects.filter(p => p.statutAppel === 'A_RAPPELER').length;
-    const rgpd = myProspects.filter(p => p.rgpdEnvoye).length;
-    const factures = myProspects.filter(p => ['DOSSIER_RECU', 'CLIENT_SIGNE'].includes(p.statutAppel)).length;
+    const rgpd = myProspects.filter(p => p.rgpdEnvoye || RGPD_STATUTS.includes(p.statutAppel)).length;
+    const factures = myProspects.filter(p => FACTURES_STATUTS.includes(p.statutAppel)).length;
     const signes = myProspects.filter(p => p.statutAppel === 'CLIENT_SIGNE').length;
 
     const historique = myProspects.filter(p => p.dateDernierAppel).slice(0, 10).map(p => ({
