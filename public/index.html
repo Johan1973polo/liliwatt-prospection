@@ -1502,15 +1502,45 @@ async function lancerScrapeAttribuer(){
   var departements=Array.from(document.querySelectorAll('.scrape-attr-dep:checked')).map(function(c){return c.value;});
   var secteurs=Array.from(document.querySelectorAll('.scrape-attr-secteur:checked')).map(function(c){return c.value;});
   if(!vendeurId){alert('Choisis un vendeur');return;}if(!departements.length){alert('Coche au moins un departement');return;}if(!secteurs.length){alert('Coche au moins un secteur');return;}
-  var total=departements.length*10*secteurs.length;
-  if(!confirm('Lancer '+total+' scrapes ? Cela peut prendre plusieurs minutes.'))return;
+
   var btn=document.getElementById('scrapeAttrBtn');var st=document.getElementById('scrapeAttrStatus');
-  btn.disabled=true;btn.innerText='⏳ Scraping en cours... NE PAS FERMER';
-  st.style.display='block';st.style.background='#fef3c7';st.innerHTML='🔍 Lancement de '+total+' scrapes...<br><small>Estimation: '+Math.ceil(total*0.8/60)+' minutes</small>';
+  btn.disabled=true;btn.innerText='🔍 Verification...';
+
+  // Preview: detecter conflits
   try{
-    var r=await fetch('/api/admin/scrape-attribuer',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({vendeurId:vendeurId,departements:departements,secteurs:secteurs})});
+    var pRes=await fetch('/api/admin/scrape-attribuer-preview',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({vendeurId:vendeurId,departements:departements,secteurs:secteurs})});
+    var preview=await pRes.json();
+    if(!pRes.ok){alert('Erreur preview: '+(preview.error||''));btn.disabled=false;btn.innerText='🚀 Lancer le scrape attribue';return;}
+
+    var mode='skip';
+    if(preview.conflits&&preview.conflits.length>0){
+      mode=await showAntiDoublonsModal(preview);
+      if(mode==='cancel'){btn.disabled=false;btn.innerText='🚀 Lancer le scrape attribue';return;}
+    }
+    await executerScrapeAttribuer(vendeurId,departements,secteurs,mode);
+  }catch(e){alert('Erreur: '+e.message);btn.disabled=false;btn.innerText='🚀 Lancer le scrape attribue';}
+}
+function showAntiDoublonsModal(preview){
+  return new Promise(function(resolve){
+    var ch=preview.conflits.map(function(c){return '<div style="padding:10px 14px;background:#fef3c7;border-left:4px solid #f59e0b;margin-bottom:8px;border-radius:8px;"><div style="font-weight:600;">⚠️ '+c.nom+' — '+c.count+' fiches</div><div style="font-size:12px;color:#78350f;margin-top:4px;">Ex: '+c.exemples.slice(0,3).join(' · ')+'</div></div>';}).join('');
+    var ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:3000;padding:20px;';
+    ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:28px;max-width:580px;width:100%;max-height:90vh;overflow-y:auto;"><h2 style="margin:0 0 8px;">⚠️ Conflits detectes</h2><p style="color:#6b7280;font-size:14px;margin-bottom:18px;">Certaines fiches sont deja attribuees :</p>'+ch+'<div style="background:#dbeafe;padding:10px 14px;border-radius:8px;font-size:13px;margin:12px 0;"><strong>📊</strong> '+preview.totalConflits+' en conflit · '+preview.librePool+' libres · '+preview.dejaAuVendeur+' deja au vendeur</div><p style="font-size:14px;margin:14px 0;">Que faire ?</p><div style="display:flex;flex-direction:column;gap:8px;"><button id="choix-skip" style="padding:12px 16px;background:#f3f4f6;border:none;border-radius:8px;cursor:pointer;text-align:left;"><strong>⏭️ Skip</strong> — Ne pas toucher aux fiches des autres<br><span style="font-size:12px;color:#6b7280;">Recupere seulement les '+preview.librePool+' libres + nouvelles</span></button><button id="choix-voler" style="padding:12px 16px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;cursor:pointer;text-align:left;"><strong>🔄 Voler</strong> — Reattribuer les '+preview.totalConflits+' fiches<br><span style="font-size:12px;color:#991b1b;">Toutes passent au vendeur cible (action loggee)</span></button><button id="choix-cancel" style="padding:12px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;text-align:left;"><strong>❌ Annuler</strong></button></div></div>';
+    document.body.appendChild(ov);
+    document.getElementById('choix-skip').onclick=function(){document.body.removeChild(ov);resolve('skip');};
+    document.getElementById('choix-voler').onclick=function(){if(confirm('Confirmer: voler '+preview.totalConflits+' fiches ?')){document.body.removeChild(ov);resolve('voler');}};
+    document.getElementById('choix-cancel').onclick=function(){document.body.removeChild(ov);resolve('cancel');};
+  });
+}
+async function executerScrapeAttribuer(vendeurId,departements,secteurs,mode){
+  var btn=document.getElementById('scrapeAttrBtn');var st=document.getElementById('scrapeAttrStatus');
+  var total=departements.length*10*secteurs.length;
+  btn.innerText='⏳ Scraping ('+mode+')... NE PAS FERMER';
+  st.style.display='block';st.style.background='#fef3c7';st.innerHTML='🔍 '+total+' scrapes en mode '+mode+'...<br><small>~'+Math.ceil(total*0.8/60)+' min</small>';
+  try{
+    var r=await fetch('/api/admin/scrape-attribuer',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({vendeurId:vendeurId,departements:departements,secteurs:secteurs,mode:mode})});
     var d=await r.json();
-    if(r.ok){st.style.background='#d1fae5';st.innerHTML='✅ <strong>'+d.message+'</strong><br>📥 Inseres: '+d.totalInserted+'<br>🔄 Attribues: '+d.totalReassigned+'<br>⏭️ Doublons: '+d.totalSkipped+'<br>⏱ Duree: '+d.duration+'s';btn.innerText='✅ Termine';setTimeout(function(){closeScrapeAttribuerModal();if(typeof loadAdminStats==='function')loadAdminStats();btn.disabled=false;btn.innerText='🚀 Lancer le scrape attribue';},6000);}
+    if(r.ok){st.style.background='#d1fae5';st.innerHTML='✅ <strong>'+d.message+'</strong><br>📥 Inseres: '+d.totalInserted+'<br>🔄 Attribues: '+d.totalReassigned+'<br>⏭️ Doublons: '+d.totalSkipped+'<br>⏱ Duree: '+d.duration+'s<br>📋 Mode: '+mode;btn.innerText='✅ Termine';setTimeout(function(){closeScrapeAttribuerModal();if(typeof loadAdminStats==='function')loadAdminStats();btn.disabled=false;btn.innerText='🚀 Lancer le scrape attribue';},6000);}
     else{st.style.background='#fee2e2';st.innerHTML='❌ '+d.error+(d.detail?' — '+d.detail:'');btn.disabled=false;btn.innerText='🚀 Reessayer';}
   }catch(e){st.style.background='#fee2e2';st.innerHTML='❌ '+e.message;btn.disabled=false;btn.innerText='🚀 Reessayer';}
 }
