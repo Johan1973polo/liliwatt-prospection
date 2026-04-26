@@ -266,7 +266,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
     <!-- MES FICHES -->
     <div class="panel" id="tab-mesfiches">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
-        <h2 style="margin:0;font-size:24px;font-weight:800;color:#1c1917;">📂 Mes fiches</h2>
+        <div style="display:flex;align-items:center;gap:12px;"><h2 style="margin:0;font-size:24px;font-weight:800;color:#1c1917;">📂 Mes fiches</h2><button onclick="openModalFicheManuelle()" style="padding:8px 16px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-size:13px;box-shadow:0 2px 8px rgba(124,58,237,.3);">➕ Ajouter</button></div>
         <div id="mesFichesTotal" style="color:#78716c;font-weight:600;font-size:14px;">0 fiches</div>
       </div>
       <div style="margin-bottom:14px;"><select id="statutFilter" onchange="setMesFichesStatut(this.value)" style="padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;font-size:14px;cursor:pointer;min-width:260px;">
@@ -1602,33 +1602,39 @@ document.addEventListener('DOMContentLoaded', function() {
   </div>
 </div>
 
-<!-- MODAL FICHE MANUELLE -->
-<div id="modalFicheManuelle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:16px;padding:24px;width:90%;max-width:500px;max-height:90vh;overflow-y:auto;">
-    <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#1e1b4b;">➕ Nouvelle fiche manuelle</h2>
-    <p style="color:#dc2626;font-size:13px;background:#fee2e2;padding:8px;border-radius:6px;margin-bottom:16px;">🔒 Cette fiche sera <strong>verrouillee a vie</strong> a votre nom.</p>
+<!-- MODAL FICHE MANUELLE (enrichi) -->
+<div id="modalFicheManuelle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:5000;padding:20px;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:600px;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;"><h2 style="margin:0;">➕ Ajouter une fiche</h2><button onclick="closeModalFicheManuelle()" style="background:none;border:none;font-size:24px;cursor:pointer;">×</button></div>
+    <div style="margin-bottom:14px;padding:10px 14px;background:#f3f0ff;border-radius:8px;font-size:13px;color:#5b21b6;">ℹ️ Cette fiche te sera attribuee a vie (source MANUELLE, verrouillee).</div>
     <form id="formFicheManuelle">
-      <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin:10px 0 4px;">Nom entreprise *</label>
-      <input type="text" name="raisonSociale" required style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;box-sizing:border-box;">
-      <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin:10px 0 4px;">Telephone *</label>
-      <input type="tel" name="telephone" required placeholder="06 XX XX XX XX" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;box-sizing:border-box;">
-      <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin:10px 0 4px;">Source * (ex: salon B2B, recommandation...)</label>
-      <input type="text" name="source" required placeholder="Salon, recommandation, etc." style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;box-sizing:border-box;">
-      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;">
-      <p style="color:#6b7280;font-size:12px;margin:0 0 8px;">Champs optionnels :</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div><label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;margin-bottom:3px;">Prenom contact</label><input type="text" name="prenomContact" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;box-sizing:border-box;"></div>
-        <div><label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;margin-bottom:3px;">Nom contact</label><input type="text" name="nomContact" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;box-sizing:border-box;"></div>
+      <h3 style="margin:14px 0 10px;font-size:14px;color:#6b7280;letter-spacing:1px;">ENTREPRISE *</h3>
+      <div style="margin-bottom:10px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">Raison sociale *</label><input type="text" name="raisonSociale" required style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">SIREN</label><input type="text" name="siren" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;"></div>
+        <div><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">Secteur</label><input type="text" name="secteur" placeholder="Restaurant, Hotel..." style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;"></div>
       </div>
-      <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;margin:8px 0 3px;">Email</label>
-      <input type="email" name="email" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;box-sizing:border-box;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;margin:8px 0 3px;">Adresse</label>
-      <input type="text" name="adresse" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;box-sizing:border-box;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#9ca3af;margin:8px 0 3px;">Notes</label>
-      <textarea name="notes" rows="2" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;box-sizing:border-box;"></textarea>
+      <h3 style="margin:18px 0 10px;font-size:14px;color:#6b7280;letter-spacing:1px;">CONTACT</h3>
+      <div style="margin-bottom:10px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">Signataire / contact</label><input type="text" name="signataire" placeholder="Prenom Nom" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">📞 Telephone</label><input type="tel" name="telephone" placeholder="06 12 34 56 78" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;"></div>
+        <div><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">✉️ Email</label><input type="email" name="email" placeholder="contact@exemple.fr" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;"></div>
+      </div>
+      <h3 style="margin:18px 0 10px;font-size:14px;color:#6b7280;letter-spacing:1px;">ADRESSE</h3>
+      <div style="margin-bottom:10px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">Adresse</label><input type="text" name="adresse" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;"></div>
+      <div style="display:grid;grid-template-columns:120px 1fr;gap:10px;margin-bottom:10px;">
+        <div><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">Code postal</label><input type="text" name="codePostal" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;"></div>
+        <div><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">Ville</label><input type="text" name="ville" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;"></div>
+      </div>
+      <h3 style="margin:18px 0 10px;font-size:14px;color:#6b7280;letter-spacing:1px;">ENERGIE (optionnel)</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">Segment</label><select name="segment" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;"><option value="">-</option><option value="C2">C2</option><option value="C3">C3</option><option value="C4">C4</option><option value="C5">C5</option></select></div>
+        <div><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">Energie</label><select name="energie" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;"><option value="">-</option><option value="ELEC">Electricite</option><option value="GAZ">Gaz</option><option value="DUAL">Dual</option></select></div>
+      </div>
+      <div style="margin-top:14px;"><label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;">📝 Notes initiales</label><textarea name="notes" rows="3" placeholder="Source du contact, contexte..." style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;resize:vertical;"></textarea></div>
       <div style="display:flex;gap:10px;margin-top:20px;">
-        <button type="button" onclick="closeModalFicheManuelle()" style="flex:1;padding:12px;background:#f3f4f6;border:none;border-radius:8px;cursor:pointer;font-weight:600;">Annuler</button>
-        <button type="submit" style="flex:2;padding:12px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;">🔒 Creer cette fiche</button>
+        <button type="button" onclick="closeModalFicheManuelle()" style="flex:1;padding:12px;background:#f3f4f6;border:none;border-radius:10px;cursor:pointer;">Annuler</button>
+        <button type="submit" style="flex:2;padding:12px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;">✅ Creer la fiche</button>
       </div>
     </form>
   </div>
