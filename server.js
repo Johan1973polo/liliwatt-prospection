@@ -574,7 +574,7 @@ app.get('/api/kpis/me', verifyToken, async (req, res) => {
     const dateFilter = getDateRange(period);
     const actWhere = dateFilter ? { userId, timestamp: dateFilter } : { userId };
 
-    const [appels, rgpd, fiches, ventes, factures, pipeline, temps] = await Promise.all([
+    const [appels, rgpd, fiches, ventes, factures, pipeline, temps, fichesTraitees, ventesStatut] = await Promise.all([
       prisma.activityLog.count({ where: { ...actWhere, type: 'CALL' } }),
       prisma.activityLog.count({ where: { ...actWhere, type: 'RGPD_SENT' } }),
       prisma.activityLog.count({ where: { ...actWhere, type: 'ATTRIBUTION' } }),
@@ -582,6 +582,8 @@ app.get('/api/kpis/me', verifyToken, async (req, res) => {
       prisma.activityLog.count({ where: { ...actWhere, type: 'INVOICE_RECEIVED' } }),
       prisma.prospect.groupBy({ by: ['statutAppel'], where: { vendeurId: userId }, _count: true }),
       prisma.workSession.aggregate({ where: { userId, startedAt: dateFilter || undefined }, _sum: { durationMinutes: true } }),
+      prisma.prospect.count({ where: { vendeurId: userId, signataire: { not: null } } }),
+      prisma.prospect.count({ where: { vendeurId: userId, statutAppel: 'CLIENT_SIGNE' } }),
     ]);
 
     const adhesion = appels > 0 ? Math.round((rgpd / appels) * 1000) / 10 : 0;
@@ -595,7 +597,7 @@ app.get('/api/kpis/me', verifyToken, async (req, res) => {
 
     res.json({
       period,
-      counters: { appels, rgpd, fichesPrises: fiches, factures, ventes, tempsActifMinutes: temps._sum.durationMinutes || 0 },
+      counters: { appels, rgpd, fichesPrises: fiches, factures, ventes, fichesTraitees, ventesStatut, tempsActifMinutes: temps._sum.durationMinutes || 0 },
       ratios: {
         adhesion: { value: adhesion, color: color(adhesion, 'adhesion') },
         retourFacture: { value: retour, color: color(retour, 'retour') },
@@ -682,15 +684,17 @@ app.get('/api/kpis/team', verifyToken, async (req, res) => {
       vendeurIds = mesV.map(v => v.id); teamLabel = 'Mon equipe';
     }
 
-    if (!vendeurIds.length) return res.json({ teamLabel, period, vendeurCount: 0, counters: { appels: 0, rgpd: 0, factures: 0, ventes: 0, fichesPrises: 0 }, ratios: { adhesion: { value: 0, color: 'red' }, retourFacture: { value: 0, color: 'red' }, closing: { value: 0, color: 'red' } }, leaderboard: [] });
+    if (!vendeurIds.length) return res.json({ teamLabel, period, vendeurCount: 0, counters: { appels: 0, rgpd: 0, factures: 0, ventes: 0, fichesPrises: 0, fichesTraitees: 0, ventesStatut: 0 }, ratios: { adhesion: { value: 0, color: 'red' }, retourFacture: { value: 0, color: 'red' }, closing: { value: 0, color: 'red' } }, leaderboard: [] });
 
     const actW = dateFilter ? { userId: { in: vendeurIds }, timestamp: dateFilter } : { userId: { in: vendeurIds } };
-    const [appels, rgpd, factures, ventes, fiches] = await Promise.all([
+    const [appels, rgpd, factures, ventes, fiches, fichesTraitees, ventesStatut] = await Promise.all([
       prisma.activityLog.count({ where: { ...actW, type: 'CALL' } }),
       prisma.activityLog.count({ where: { ...actW, type: 'RGPD_SENT' } }),
       prisma.activityLog.count({ where: { ...actW, type: 'INVOICE_RECEIVED' } }),
       prisma.activityLog.count({ where: { ...actW, type: 'SALE_SIGNED' } }),
       prisma.activityLog.count({ where: { ...actW, type: 'ATTRIBUTION' } }),
+      prisma.prospect.count({ where: { vendeurId: { in: vendeurIds }, signataire: { not: null } } }),
+      prisma.prospect.count({ where: { vendeurId: { in: vendeurIds }, statutAppel: 'CLIENT_SIGNE' } }),
     ]);
 
     const adhesion = appels > 0 ? Math.round((rgpd / appels) * 1000) / 10 : 0;
@@ -721,7 +725,7 @@ app.get('/api/kpis/team', verifyToken, async (req, res) => {
     res.json({
       teamLabel, period, vendeurCount: vendeurIds.length,
       objectives: { appelsCible: 120 * vendeurIds.length, tempsCible: 300 },
-      counters: { appels, rgpd, factures, ventes, fichesPrises: fiches },
+      counters: { appels, rgpd, factures, ventes, fichesPrises: fiches, fichesTraitees, ventesStatut },
       ratios: { adhesion: { value: adhesion, color: col(adhesion, 'adhesion') }, retourFacture: { value: retour, color: col(retour, 'retour') }, closing: { value: closing, color: col(closing, 'closing') } },
       leaderboard,
     });
