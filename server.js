@@ -1050,6 +1050,62 @@ app.post('/api/admin/scrape-attribuer', verifyToken, isAdminMW, async (req, res)
   } catch(e) { console.error('Scrape-attribuer error:', e); res.status(500).json({ error: e.message }); }
 });
 
+// ===== PREMIUM ATTRIBUTION =====
+app.get('/api/admin/premium/stats', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const [statuts, scoreS, dateS, libres, attribuees] = await Promise.all([
+      prisma.prospect.groupBy({ by: ['statutOhm'], where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] } }, _count: true, orderBy: { _count: { statutOhm: 'desc' } } }),
+      prisma.prospect.aggregate({ where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, score: { not: null } }, _min: { score: true }, _max: { score: true }, _avg: { score: true } }),
+      prisma.prospect.aggregate({ where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, dateDebutLivraison: { not: null } }, _min: { dateDebutLivraison: true }, _max: { dateDebutLivraison: true } }),
+      prisma.prospect.count({ where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: null } }),
+      prisma.prospect.count({ where: { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] }, vendeurId: { not: null } } }),
+    ]);
+    res.json({ success: true, statuts: statuts.map(s => ({ statut: s.statutOhm, count: s._count })), scoreMin: scoreS._min.score, scoreMax: scoreS._max.score, scoreAvg: scoreS._avg.score ? parseFloat(scoreS._avg.score.toFixed(1)) : 0, dateMin: dateS._min.dateDebutLivraison, dateMax: dateS._max.dateDebutLivraison, libres, attribuees, total: libres + attribuees });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/premium/search', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const { statutsOhm, scoreMin, scoreMax, dateDebutMin, dateDebutMax, attribuesAussi, page = 1, pageSize = 50 } = req.body;
+    const where = { source: { in: ['PREMIUM', 'PREMIUM_SIGNED'] } };
+    if (statutsOhm?.length) where.statutOhm = { in: statutsOhm };
+    if (scoreMin !== undefined && scoreMin !== null) { where.score = { ...(where.score || {}), gte: parseFloat(scoreMin) }; }
+    if (scoreMax !== undefined && scoreMax !== null) { where.score = { ...(where.score || {}), lte: parseFloat(scoreMax) }; }
+    if (dateDebutMin) { where.dateDebutLivraison = { ...(where.dateDebutLivraison || {}), gte: new Date(dateDebutMin) }; }
+    if (dateDebutMax) { where.dateDebutLivraison = { ...(where.dateDebutLivraison || {}), lte: new Date(dateDebutMax + 'T23:59:59') }; }
+    if (!attribuesAussi) where.vendeurId = null;
+
+    const [total, fiches] = await Promise.all([
+      prisma.prospect.count({ where }),
+      prisma.prospect.findMany({ where, orderBy: { score: 'desc' }, skip: (page - 1) * pageSize, take: pageSize, select: { id: true, raisonSociale: true, ville: true, codePostal: true, score: true, statutOhm: true, dateDebutLivraison: true, dateFinLivraison: true, vendeurId: true, signataire: true, telephone: true, nbPdl: true } }),
+    ]);
+    // Enrichir vendeur noms
+    const vids = [...new Set(fiches.map(f => f.vendeurId).filter(Boolean))];
+    const vMap = {};
+    if (vids.length) { const vs = await prisma.user.findMany({ where: { id: { in: vids } }, select: { id: true, firstName: true, lastName: true } }); vs.forEach(v => { vMap[v.id] = ((v.firstName || '') + ' ' + (v.lastName || '')).trim(); }); }
+
+    res.json({ success: true, total, page, pageSize, totalPages: Math.ceil(total / pageSize), fiches: fiches.map(f => ({ ...f, vendeurNom: f.vendeurId ? (vMap[f.vendeurId] || '?') : null })) });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/premium/attribuer', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const { vendeurId, prospectIds, mode = 'skip' } = req.body;
+    if (!vendeurId) return res.status(400).json({ error: 'vendeurId requis' });
+    if (!prospectIds?.length) return res.status(400).json({ error: 'prospectIds requis' });
+    const vendeur = await prisma.user.findUnique({ where: { id: vendeurId }, select: { id: true, firstName: true, lastName: true } });
+    if (!vendeur) return res.status(404).json({ error: 'Vendeur introuvable' });
+
+    const where = { id: { in: prospectIds } };
+    if (mode === 'skip') where.vendeurId = null;
+    const result = await prisma.prospect.updateMany({ where, data: { vendeurId } });
+
+    try { await prisma.activityLog.create({ data: { userId: req.user.id, type: 'ATTRIBUTION', metadata: { action: 'attribution_premium', vendeurId, vendeurNom: `${vendeur.firstName} ${vendeur.lastName}`, count: result.count, mode } } }); } catch(e) {}
+
+    res.json({ success: true, attribuees: result.count, skipped: prospectIds.length - result.count, mode, vendeurNom: `${vendeur.firstName} ${vendeur.lastName}`, message: `${result.count} fiches attribuees a ${vendeur.firstName}` });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== STATIC =====
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 

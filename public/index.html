@@ -313,7 +313,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
           <div style="font-weight:700;font-size:14px;">Recharger</div>
           <div style="font-size:11px;color:#6b7280;">Scrape Google Places</div>
         </div>
-        <div onclick="showAdminSub('premium')" id="acard-premium" style="background:#fff;color:#1e1b4b;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
+        <div onclick="openAttributionPremiumModal()" id="acard-premium" style="background:#fff;color:#1e1b4b;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
           <div style="font-size:32px;margin-bottom:6px;">💎</div>
           <div style="font-weight:700;font-size:14px;">Attribution</div>
           <div style="font-size:11px;color:#6b7280;">Base Premium</div>
@@ -1543,6 +1543,105 @@ async function executerScrapeAttribuer(vendeurId,departements,secteurs,mode){
     if(r.ok){st.style.background='#d1fae5';st.innerHTML='✅ <strong>'+d.message+'</strong><br>📥 Inseres: '+d.totalInserted+'<br>🔄 Attribues: '+d.totalReassigned+'<br>⏭️ Doublons: '+d.totalSkipped+'<br>⏱ Duree: '+d.duration+'s<br>📋 Mode: '+mode;btn.innerText='✅ Termine';setTimeout(function(){closeScrapeAttribuerModal();if(typeof loadAdminStats==='function')loadAdminStats();btn.disabled=false;btn.innerText='🚀 Lancer le scrape attribue';},6000);}
     else{st.style.background='#fee2e2';st.innerHTML='❌ '+d.error+(d.detail?' — '+d.detail:'');btn.disabled=false;btn.innerText='🚀 Reessayer';}
   }catch(e){st.style.background='#fee2e2';st.innerHTML='❌ '+e.message;btn.disabled=false;btn.innerText='🚀 Reessayer';}
+}
+</script>
+
+<!-- MODAL ATTRIBUTION PREMIUM -->
+<div id="modalAttributionPremium" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:flex-start;justify-content:center;z-index:2000;overflow-y:auto;padding:20px;">
+<div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:1100px;margin-top:20px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;"><h2 style="margin:0;">💎 Attribution Base Premium</h2><button onclick="closeAttrPremium()" style="background:none;border:none;font-size:24px;cursor:pointer;">×</button></div>
+  <div id="premiumStatsBar" style="display:flex;gap:12px;margin-bottom:16px;font-size:13px;"><div style="padding:8px 14px;background:#f3f4f6;border-radius:8px;">Total: <strong id="pTotalG">-</strong></div><div style="padding:8px 14px;background:#d1fae5;border-radius:8px;">Libres: <strong id="pLibresG">-</strong></div><div style="padding:8px 14px;background:#fef3c7;border-radius:8px;">Attribuees: <strong id="pAttrG">-</strong></div></div>
+  <div style="background:#f9fafb;padding:16px;border-radius:12px;margin-bottom:16px;">
+    <h3 style="margin:0 0 12px;font-size:15px;">🔍 Filtres</h3>
+    <div style="margin-bottom:14px;"><label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Statut tunnel</label><div id="pStatutsList" style="display:flex;gap:8px;flex-wrap:wrap;"></div></div>
+    <div style="margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;"><label style="font-weight:600;font-size:13px;">Score:</label><input type="number" id="pScoreMin" min="0" max="100" placeholder="Min" style="width:80px;padding:6px;border:1px solid #e5e7eb;border-radius:6px;"><span>—</span><input type="number" id="pScoreMax" min="0" max="100" placeholder="Max" style="width:80px;padding:6px;border:1px solid #e5e7eb;border-radius:6px;"><button onclick="document.getElementById('pScoreMin').value=80;document.getElementById('pScoreMax').value=100;searchPremiumAttr();" style="padding:6px 10px;background:#ddd6fe;border:none;border-radius:6px;cursor:pointer;font-size:12px;">⭐ Top 80+</button></div>
+    <div style="margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;"><label style="font-weight:600;font-size:13px;">Date debut:</label><span style="font-size:13px;">Du</span><input type="date" id="pDateMin" style="padding:6px;border:1px solid #e5e7eb;border-radius:6px;"><span style="font-size:13px;">au</span><input type="date" id="pDateMax" style="padding:6px;border:1px solid #e5e7eb;border-radius:6px;"></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;"><input type="checkbox" id="pInclAttr">Inclure fiches deja attribuees</label>
+    <div style="display:flex;gap:8px;"><button onclick="searchPremiumAttr()" style="padding:10px 16px;background:#7c3aed;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🔍 Rechercher</button><button onclick="resetPremiumAttr()" style="padding:10px 16px;background:#f3f4f6;border:none;border-radius:8px;cursor:pointer;">↺ Reset</button></div>
+  </div>
+  <div id="pResultsHeader" style="display:none;margin-bottom:12px;padding:10px 14px;background:#dbeafe;border-radius:8px;"><strong id="pResultsCount">-</strong> fiches · Select: <strong id="pSelCount">0</strong></div>
+  <div id="pResultsList" style="max-height:400px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px;"><div style="text-align:center;padding:40px;color:#6b7280;">Lance une recherche...</div></div>
+  <div id="pPagination" style="display:none;padding:10px;text-align:center;margin-top:8px;"><button onclick="changePPage(-1)" style="padding:6px 12px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;">←</button><span style="margin:0 14px;">Page <strong id="pPageNum">1</strong>/<span id="pTotalPages">1</span></span><button onclick="changePPage(1)" style="padding:6px 12px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;">→</button></div>
+  <div style="display:flex;gap:8px;margin-top:12px;"><button onclick="pSelectAll(true)" style="padding:8px 12px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-size:13px;">☑ Tout (page)</button><button onclick="pSelectAll(false)" style="padding:8px 12px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-size:13px;">☐ Deselect</button><button onclick="pSelectAllPages()" style="padding:8px 12px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;cursor:pointer;font-size:13px;">🌐 Toutes pages</button></div>
+  <div style="background:#ecfdf5;border:1px solid #6ee7b7;padding:14px;border-radius:12px;margin-top:16px;"><h3 style="margin:0 0 10px;font-size:15px;">📤 Attribution</h3><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><select id="pVendeurDest" style="flex:1;min-width:240px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;"><option value="">— Vendeur —</option></select><button id="pBtnAttr" onclick="doAttribuerPremium()" style="padding:10px 18px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">📤 Attribuer <span id="pBtnCount">0</span></button></div></div>
+  <div id="pStatus" style="display:none;padding:12px;border-radius:8px;margin-top:12px;font-size:13px;"></div>
+</div></div>
+
+<script>
+var pState={page:1,total:0,totalPages:0,fiches:[],sel:new Set(),selAll:false};
+async function openAttributionPremiumModal(){
+  document.getElementById('modalAttributionPremium').style.display='flex';document.getElementById('pStatus').style.display='none';
+  pState.sel.clear();pState.selAll=false;
+  try{
+    var r=await fetch('/api/admin/premium/stats',{headers:{'Authorization':'Bearer '+token}});var d=await r.json();
+    document.getElementById('pTotalG').textContent=(d.total||0).toLocaleString('fr-FR');
+    document.getElementById('pLibresG').textContent=(d.libres||0).toLocaleString('fr-FR');
+    document.getElementById('pAttrG').textContent=(d.attribuees||0).toLocaleString('fr-FR');
+    document.getElementById('pStatutsList').innerHTML=(d.statuts||[]).map(function(s){return '<label style="display:flex;align-items:center;gap:6px;padding:8px 12px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="p-statut-cb" value="'+s.statut+'" '+(s.statut==='Tunnel en cours'?'checked':'')+'>'+s.statut+' <span style="color:#7c3aed;font-weight:600;">('+s.count.toLocaleString('fr-FR')+')</span></label>';}).join('');
+    var vr=await fetch('/api/admin/vendeurs-list',{headers:{'Authorization':'Bearer '+token}});var vd=await vr.json();
+    var sel=document.getElementById('pVendeurDest');sel.innerHTML='<option value="">— Vendeur —</option>';
+    (vd.vendeurs||vd||[]).forEach(function(v){var o=document.createElement('option');o.value=v.id;o.textContent=((v.firstName||'')+(v.lastName?' '+v.lastName:''))+' ('+v.email+')';sel.appendChild(o);});
+  }catch(e){console.error(e);}
+}
+function closeAttrPremium(){document.getElementById('modalAttributionPremium').style.display='none';}
+function resetPremiumAttr(){document.querySelectorAll('.p-statut-cb').forEach(function(c){c.checked=false;});document.getElementById('pScoreMin').value='';document.getElementById('pScoreMax').value='';document.getElementById('pDateMin').value='';document.getElementById('pDateMax').value='';document.getElementById('pInclAttr').checked=false;pState.sel.clear();pState.selAll=false;pState.page=1;document.getElementById('pResultsList').innerHTML='<div style="text-align:center;padding:40px;color:#6b7280;">Lance une recherche...</div>';document.getElementById('pResultsHeader').style.display='none';document.getElementById('pPagination').style.display='none';updPCount();}
+async function searchPremiumAttr(){pState.page=1;await fetchPPage();}
+async function fetchPPage(){
+  var statuts=Array.from(document.querySelectorAll('.p-statut-cb:checked')).map(function(c){return c.value;});
+  var body={page:pState.page,pageSize:50};
+  if(statuts.length)body.statutsOhm=statuts;
+  var sm=document.getElementById('pScoreMin').value;if(sm!=='')body.scoreMin=parseFloat(sm);
+  var sx=document.getElementById('pScoreMax').value;if(sx!=='')body.scoreMax=parseFloat(sx);
+  var dm=document.getElementById('pDateMin').value;if(dm)body.dateDebutMin=dm;
+  var dx=document.getElementById('pDateMax').value;if(dx)body.dateDebutMax=dx;
+  if(document.getElementById('pInclAttr').checked)body.attribuesAussi=true;
+  document.getElementById('pResultsList').innerHTML='<div style="text-align:center;padding:40px;">⏳...</div>';
+  try{
+    var r=await fetch('/api/admin/premium/search',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body)});var d=await r.json();
+    if(!r.ok){document.getElementById('pResultsList').innerHTML='<div style="padding:20px;color:#dc2626;">❌ '+(d.error||'')+'</div>';return;}
+    pState.total=d.total;pState.totalPages=d.totalPages;pState.fiches=d.fiches;
+    renderPResults();
+    document.getElementById('pResultsHeader').style.display='block';document.getElementById('pResultsCount').textContent=d.total.toLocaleString('fr-FR');
+    document.getElementById('pPagination').style.display=d.totalPages>1?'block':'none';document.getElementById('pPageNum').textContent=d.page;document.getElementById('pTotalPages').textContent=d.totalPages;
+  }catch(e){document.getElementById('pResultsList').innerHTML='<div style="padding:20px;color:#dc2626;">❌ '+e.message+'</div>';}
+}
+function renderPResults(){
+  if(!pState.fiches.length){document.getElementById('pResultsList').innerHTML='<div style="text-align:center;padding:40px;color:#6b7280;">Aucune fiche</div>';return;}
+  document.getElementById('pResultsList').innerHTML=pState.fiches.map(function(f){
+    var sel=pState.selAll||pState.sel.has(f.id);
+    var dd=f.dateDebutLivraison?new Date(f.dateDebutLivraison).toLocaleDateString('fr-FR'):'-';
+    var ow=f.vendeurNom?'<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;margin-left:8px;">'+f.vendeurNom+'</span>':'';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #f3f4f6;'+(sel?'background:#ecfdf5;':'')+'"><input type="checkbox" class="p-fiche-cb" value="'+f.id+'" '+(sel?'checked':'')+' onchange="togglePFiche(\''+f.id+'\',this.checked)"><div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14px;">'+(f.raisonSociale||'Sans nom')+ow+'</div><div style="font-size:12px;color:#6b7280;margin-top:2px;">📍 '+(f.ville||'-')+' · Score: <strong>'+(f.score!==null?f.score:'-')+'</strong> · 📅 '+dd+' · '+(f.statutOhm||'-')+(f.nbPdl?' · '+f.nbPdl+' PDL':'')+'</div></div></div>';
+  }).join('');updPCount();
+}
+function togglePFiche(id,checked){if(pState.selAll){pState.selAll=false;pState.fiches.forEach(function(f){pState.sel.add(f.id);});}if(checked)pState.sel.add(id);else pState.sel.delete(id);updPCount();}
+function pSelectAll(c){pState.selAll=false;pState.fiches.forEach(function(f){if(c)pState.sel.add(f.id);else pState.sel.delete(f.id);});document.querySelectorAll('.p-fiche-cb').forEach(function(cb){cb.checked=c;});updPCount();}
+function pSelectAllPages(){if(!confirm('Selectionner les '+pState.total.toLocaleString('fr-FR')+' fiches ?'))return;pState.selAll=true;pState.sel.clear();document.querySelectorAll('.p-fiche-cb').forEach(function(cb){cb.checked=true;});updPCount();}
+function updPCount(){var c=pState.selAll?pState.total:pState.sel.size;document.getElementById('pSelCount').textContent=c.toLocaleString('fr-FR');document.getElementById('pBtnCount').textContent=c.toLocaleString('fr-FR');}
+async function changePPage(dir){pState.page+=dir;if(pState.page<1)pState.page=1;if(pState.page>pState.totalPages)pState.page=pState.totalPages;await fetchPPage();}
+async function doAttribuerPremium(){
+  var vid=document.getElementById('pVendeurDest').value;if(!vid){alert('Choisis un vendeur');return;}
+  var ids=[];
+  if(pState.selAll){
+    if(!confirm('Attribuer les '+pState.total+' fiches ?'))return;
+    var body2={page:1,pageSize:Math.min(10000,pState.total)};
+    var statuts=Array.from(document.querySelectorAll('.p-statut-cb:checked')).map(function(c){return c.value;});if(statuts.length)body2.statutsOhm=statuts;
+    var sm=document.getElementById('pScoreMin').value;if(sm!=='')body2.scoreMin=parseFloat(sm);
+    var sx=document.getElementById('pScoreMax').value;if(sx!=='')body2.scoreMax=parseFloat(sx);
+    if(document.getElementById('pInclAttr').checked)body2.attribuesAussi=true;
+    var r2=await fetch('/api/admin/premium/search',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body2)});
+    var d2=await r2.json();ids=d2.fiches.map(function(f){return f.id;});
+  }else{ids=Array.from(pState.sel);}
+  if(!ids.length){alert('Aucune fiche selectionnee');return;}
+  if(!confirm('Attribuer '+ids.length+' fiche(s) ?'))return;
+  var btn=document.getElementById('pBtnAttr');btn.disabled=true;btn.innerText='⏳...';
+  var st=document.getElementById('pStatus');st.style.display='block';st.style.background='#fef3c7';st.innerHTML='⏳ Attribution...';
+  try{
+    var r=await fetch('/api/admin/premium/attribuer',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({vendeurId:vid,prospectIds:ids,mode:'skip'})});
+    var d=await r.json();
+    if(r.ok){st.style.background='#d1fae5';st.innerHTML='✅ '+d.message+'<br>Attribuees: '+d.attribuees+(d.skipped>0?' · Skippees: '+d.skipped:'');pState.sel.clear();pState.selAll=false;btn.disabled=false;btn.innerHTML='📤 Attribuer <span id="pBtnCount">0</span>';setTimeout(fetchPPage,1500);}
+    else{st.style.background='#fee2e2';st.innerHTML='❌ '+(d.error||'');btn.disabled=false;btn.innerHTML='📤 Attribuer <span id="pBtnCount">0</span>';}
+  }catch(e){st.style.background='#fee2e2';st.innerHTML='❌ '+e.message;btn.disabled=false;btn.innerHTML='📤 Attribuer <span id="pBtnCount">0</span>';}
 }
 </script>
 
