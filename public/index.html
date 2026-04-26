@@ -142,9 +142,9 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
 @keyframes slideIn{from{transform:translateX(400px);opacity:0;}to{transform:translateX(0);opacity:1;}}
 /* LOGIN PAGE */
 .login-page{position:fixed;inset:0;display:grid;grid-template-columns:1fr 1fr;z-index:9999;background:#fff;}
-.login-left{background:linear-gradient(135deg,#1a0b2e 0%,#2d1b4e 50%,#4c1d95 100%);position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:40px;}
-.login-left::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle at 20% 30%,rgba(168,85,247,.2) 0%,transparent 50%),radial-gradient(circle at 80% 70%,rgba(217,70,239,.15) 0%,transparent 50%);pointer-events:none;}
-.login-left-content{position:relative;z-index:1;width:100%;max-width:520px;color:#fff;display:flex;flex-direction:column;gap:28px;}
+.login-left{background:url('/img/login-illustration.png') center/cover no-repeat;position:relative;overflow:hidden;}
+.login-left::before{content:none;}
+.login-left-content{display:none;}
 .login-logo{display:flex;align-items:center;gap:12px;}
 .logo-icon{width:48px;height:48px;background:linear-gradient(135deg,#a855f7,#d946ef);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 16px rgba(168,85,247,.4);}
 .logo-title{font-size:22px;font-weight:800;letter-spacing:2px;line-height:1;}
@@ -184,7 +184,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
 .ssl-badge{font-size:12px;color:#6b7280;margin-bottom:12px;}
 .support-link{font-size:13px;color:#6b7280;}
 .support-link a{color:#a855f7;text-decoration:none;font-weight:600;}
-@media(max-width:900px){.login-page{grid-template-columns:1fr;overflow-y:auto;}.login-left{padding:32px 24px;min-height:auto;}.hero-title{font-size:32px;}.login-illustration{min-height:140px;}.login-illustration img{max-height:180px;}.login-features{grid-template-columns:1fr;gap:10px;}.login-right{padding:32px 24px;}.form-title{font-size:28px;}}
+@media(max-width:900px){.login-page{grid-template-columns:1fr;overflow-y:auto;}.login-left{display:none;}.login-right{padding:32px 24px;}.form-title{font-size:28px;}}
 </style>
 </head>
 <body>
