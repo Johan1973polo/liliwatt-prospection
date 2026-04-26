@@ -780,10 +780,10 @@ function renderCards(prospects, div, sheet){
 
     let buttons='';
     if(isMine||isAdmin()){
-      buttons='<button class="btn btn-sm" onclick="openStatut(\''+p._row+'\',\''+sheet+'\',\''+esc(p.raison_sociale)+'\',\''+esc(p.statut_appel||'')+'\',\''+esc(p.note_appel||'')+'\')">✏️ Statut</button>' +
-        '<button class="btn btn-sm btn-pink" onclick="openMail(\''+p._row+'\',\''+sheet+'\',\''+esc(p.raison_sociale)+'\')">📧 Mail RGPD</button>';
+      buttons='<button class="btn btn-sm" onclick="event.stopPropagation();openStatut(\''+p._row+'\',\''+sheet+'\',\''+esc(p.raison_sociale)+'\',\''+esc(p.statut_appel||'')+'\',\''+esc(p.note_appel||'')+'\')">✏️ Statut</button>' +
+        '<button class="btn btn-sm btn-pink" onclick="event.stopPropagation();openMail(\''+p._row+'\',\''+sheet+'\',\''+esc(p.raison_sociale)+'\')">📧 Mail RGPD</button>';
     } else if(!attr){
-      buttons='<button class="btn btn-sm btn-outline" onclick="openConsult(\''+p._row+'\',\''+sheet+'\')">👁 Consulter</button>';
+      buttons='<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openConsult(\''+p._row+'\',\''+sheet+'\')">👁 Consulter</button>';
     }
 
     // Rendu Premium (LEADS OHM) vs Base Brute
@@ -802,7 +802,7 @@ function renderCards(prospects, div, sheet){
         (p.volume_total ? '<div style="font-size:12px;color:#374151;">⚡ Volume : '+p.volume_total+' MWh</div>' : '');
     }
 
-    return '<div class="card">' +
+    return '<div class="card" onclick="openFicheById(\''+p._row+'\')" style="cursor:pointer;">' +
       '<div style="display:flex;justify-content:space-between;align-items:start;gap:6px;"><div>' +
       '<div class="name">🏢 '+(p.raison_sociale||'—')+'</div>' +
       (isPremium ? '' : '<div class="addr">📍 '+(p.adresse||'—')+', '+(p.ville||'')+'</div>') +
