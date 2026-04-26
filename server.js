@@ -1361,6 +1361,73 @@ app.post('/api/admin/premium/attribuer', verifyToken, isAdminMW, async (req, res
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== POST /api/admin/reset-kpi =====
+app.post('/api/admin/reset-kpi', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const { userId, confirmation } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId requis' });
+    if (confirmation !== 'RESET') return res.status(400).json({ error: 'Confirmation invalide. Tape RESET.' });
+
+    const resetSingleUser = async (tx, uid) => {
+      const events = await tx.activityLog.deleteMany({ where: { userId: uid } });
+      const sessions = await tx.workSession.deleteMany({ where: { userId: uid } });
+      const fichesManu = await tx.prospect.deleteMany({ where: { vendeurId: uid, source: 'MANUELLE' } });
+      const fichesReset = await tx.prospect.updateMany({
+        where: { vendeurId: uid },
+        data: { statutAppel: 'A_APPELER', dateDernierAppel: null, dateRappel: null, rgpdEnvoye: false, noteAppel: null, signataire: null }
+      });
+      return { events: events.count, sessions: sessions.count, fichesManu: fichesManu.count, fichesReset: fichesReset.count };
+    };
+
+    if (userId === 'all') {
+      const users = await prisma.user.findMany({ where: { role: { in: ['VENDEUR', 'REFERENT'] }, isActive: true }, select: { id: true, firstName: true, lastName: true, role: true } });
+      const resets = [];
+      await prisma.$transaction(async (tx) => {
+        for (const u of users) {
+          const r = await resetSingleUser(tx, u.id);
+          resets.push({ userId: u.id, firstName: u.firstName, lastName: u.lastName, role: u.role, ...r });
+        }
+      }, { timeout: 60000 });
+      const totals = resets.reduce((t, r) => ({ events: t.events + r.events, sessions: t.sessions + r.sessions, fichesManu: t.fichesManu + r.fichesManu, fichesReset: t.fichesReset + r.fichesReset }), { events: 0, sessions: 0, fichesManu: 0, fichesReset: 0 });
+      totals.usersResetted = resets.length;
+      console.log('[RESET KPI] Admin', req.user.email, 'reset ALL USERS →', totals);
+      return res.json({ ok: true, resets, totals });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, firstName: true, lastName: true, role: true } });
+    if (!user) return res.status(404).json({ error: 'User introuvable' });
+    if (user.role === 'ADMIN') return res.status(400).json({ error: 'Impossible de reset un admin' });
+
+    const result = await prisma.$transaction(async (tx) => resetSingleUser(tx, userId), { timeout: 30000 });
+    const resets = [{ userId: user.id, firstName: user.firstName, lastName: user.lastName, role: user.role, ...result }];
+    const totals = { ...result, usersResetted: 1 };
+    console.log('[RESET KPI] Admin', req.user.email, 'reset', user.firstName, user.lastName, '→', totals);
+    res.json({ ok: true, resets, totals });
+  } catch(e) { console.error('Reset KPI error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== GET /api/admin/users-stats =====
+app.get('/api/admin/users-stats', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { role: { in: ['VENDEUR', 'REFERENT'] }, isActive: true },
+      select: { id: true, firstName: true, lastName: true, email: true, role: true, referentId: true },
+      orderBy: [{ role: 'asc' }, { firstName: 'asc' }]
+    });
+    const stats = await Promise.all(users.map(async u => {
+      const [events, sessions, fichesManu, fichesTotal] = await Promise.all([
+        prisma.activityLog.count({ where: { userId: u.id } }),
+        prisma.workSession.count({ where: { userId: u.id } }),
+        prisma.prospect.count({ where: { vendeurId: u.id, source: 'MANUELLE' } }),
+        prisma.prospect.count({ where: { vendeurId: u.id } }),
+      ]);
+      const ref = u.referentId ? await prisma.user.findUnique({ where: { id: u.referentId }, select: { firstName: true } }) : null;
+      return { ...u, referentName: ref?.firstName || null, events, sessions, fichesManu, fichesTotal, fichesScrapees: fichesTotal - fichesManu };
+    }));
+    res.json({ ok: true, users: stats });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== STATIC =====
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
