@@ -688,7 +688,8 @@ app.get('/api/admin/vendeurs-list', verifyToken, isAdminMW, async (req, res) => 
       orderBy: { firstName: 'asc' }
     });
     res.json({ success: true, vendeurs: vendeurs.map(v => ({
-      email: v.email, prenom: v.firstName || '', nom: v.lastName || '',
+      id: v.id, email: v.email, prenom: v.firstName || '', nom: v.lastName || '',
+      firstName: v.firstName, lastName: v.lastName,
       role: 'vendeur', nbAttribues: v._count.prospectsAttribues
     }))});
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -853,12 +854,13 @@ const villesFrance = require('./data/villes-france.json');
 app.post('/api/admin/scrape-attribuer', verifyToken, isAdminMW, async (req, res) => {
   try {
     const { vendeurId, departements, secteurs } = req.body;
-    if (!vendeurId) return res.status(400).json({ error: 'vendeurId requis' });
+    console.log('[scrape-attribuer] vendeurId:', vendeurId, 'deps:', departements, 'secteurs:', secteurs);
+    if (!vendeurId || vendeurId === 'undefined') return res.status(400).json({ error: 'vendeurId requis' });
     if (!departements?.length) return res.status(400).json({ error: 'Au moins un departement' });
     if (!secteurs?.length) return res.status(400).json({ error: 'Au moins un secteur' });
 
     const vendeur = await prisma.user.findUnique({ where: { id: vendeurId }, select: { id: true, firstName: true, lastName: true, email: true } });
-    if (!vendeur) return res.status(404).json({ error: 'Vendeur introuvable' });
+    if (!vendeur) return res.status(404).json({ error: 'Vendeur introuvable', vendeurIdRecu: vendeurId });
 
     const allowed = ['restaurant','hotel','boulangerie','laverie','garage','supermarche','salle_sport','spa','bar','camping','pressing','piscine'];
     const secteursOk = secteurs.filter(s => allowed.includes(s));
