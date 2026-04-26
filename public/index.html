@@ -1518,16 +1518,6 @@ function rechercherGoogle(){
   var q='"'+f.raisonSociale+'"';if(f.ville)q+=' "'+f.ville+'"';q+=' dirigeant';
   window.open('https://www.google.com/search?q='+encodeURIComponent(q),'_blank','noopener');
 }
-function rechercherPappers(){
-  var f=getDrawerFiche();
-  if(f.siren){window.open('https://www.pappers.fr/entreprise/'+f.siren.replace(/\s/g,''),'_blank','noopener');}
-  else if(f.raisonSociale){window.open('https://www.pappers.fr/recherche?q='+encodeURIComponent(f.raisonSociale+(f.ville?' '+f.ville:'')),'_blank','noopener');}
-  else{alert('Raison sociale ou SIREN requis');}
-}
-function rechercherSociete(){
-  var f=getDrawerFiche();if(!f.raisonSociale){alert('Raison sociale requise');return;}
-  window.open('https://www.societe.com/cgi-bin/search?champs='+encodeURIComponent(f.raisonSociale+(f.ville?' '+f.ville:'')),'_blank','noopener');
-}
 async function saveDrawerChanges() {
   if (!_currentDrawerId) return;
   var btn = document.getElementById('drawerSaveBtn');
@@ -1589,14 +1579,12 @@ document.addEventListener('DOMContentLoaded', function() {
   </div>
   <div style="padding:24px;">
     <!-- RECHERCHE EXTERNE -->
-    <div style="margin-bottom:18px;padding:12px;background:#f8f9fb;border-radius:10px;border:1px solid #e5e7eb;">
-      <div style="font-size:11px;letter-spacing:1.5px;font-weight:700;color:#6b7280;margin-bottom:8px;">🔎 RECHERCHER LE DIRIGEANT</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button onclick="rechercherGoogle()" style="padding:8px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:8px;" onmouseover="this.style.borderColor='#4285F4';this.style.background='#f8f9fa';" onmouseout="this.style.borderColor='#e5e7eb';this.style.background='white';"><svg width="16" height="16" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>Google</button>
-        <button onclick="rechercherPappers()" style="padding:8px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:8px;" onmouseover="this.style.borderColor='#0066ff';this.style.background='#f0f4ff';" onmouseout="this.style.borderColor='#e5e7eb';this.style.background='white';"><svg width="16" height="16" viewBox="0 0 24 24" fill="#0066ff"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/></svg>Pappers</button>
-        <button onclick="rechercherSociete()" style="padding:8px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:8px;" onmouseover="this.style.borderColor='#e63946';this.style.background='#fef0f1';" onmouseout="this.style.borderColor='#e5e7eb';this.style.background='white';"><svg width="16" height="16" viewBox="0 0 24 24" fill="#e63946"><path d="M12,3L1,9L12,15L21,10.09V17H23V9M5,13.18V17.18L12,21L19,17.18V13.18L12,17L5,13.18Z"/></svg>Societe.com</button>
+    <div style="margin-bottom:18px;padding:18px;background:linear-gradient(135deg,#7c3aed 0%,#a855f7 50%,#6d28d9 100%);border-radius:14px;box-shadow:0 4px 14px rgba(124,58,237,0.3);">
+      <div style="font-size:11px;letter-spacing:2px;font-weight:700;color:white;margin-bottom:14px;text-align:center;">🔎 RECHERCHER LE DIRIGEANT</div>
+      <div style="display:flex;justify-content:center;">
+        <button onclick="rechercherGoogle()" style="padding:12px 28px;background:white;border:none;border-radius:10px;cursor:pointer;font-size:14px;font-weight:700;display:inline-flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);color:#1f2937;" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)';" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.15)';"><svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>Rechercher sur Google</button>
       </div>
-      <div style="font-size:11px;color:#9ca3af;margin-top:8px;">💡 Trouve le nom du dirigeant et copie-le dans "Signataire"</div>
+      <div style="font-size:12px;color:rgba(255,255,255,0.85);margin-top:14px;text-align:center;">💡 Trouve le nom du dirigeant et copie-le dans "Signataire"</div>
     </div>
     <!-- ACTION COMMERCIALE -->
     <div style="margin-bottom:24px;">
