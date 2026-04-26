@@ -126,7 +126,7 @@ app.get('/api/prospects/mes-fiches', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const { statut, search, ville, secteur, page = 1, limit = 100 } = req.query;
-    const where = { vendeurId: userId };
+    const where = { vendeurId: userId, source: { in: ['BRUTE', 'MANUELLE'] } };
     if (statut && statut !== 'tous' && statut !== 'all') where.statutAppel = statut;
     if (ville && ville !== 'all') where.ville = ville;
     if (secteur && secteur !== 'all') where.secteur = secteur;
@@ -143,7 +143,7 @@ app.get('/api/prospects/mes-fiches', verifyToken, async (req, res) => {
       prisma.prospect.findMany({ where, orderBy: [{ dateRappel: 'asc' }, { updatedAt: 'desc' }], skip, take: parseInt(limit) }),
       prisma.prospect.count({ where }),
       prisma.prospect.groupBy({ by: ['statutAppel'], where: { vendeurId: userId }, _count: true }),
-      prisma.prospect.findMany({ where: { vendeurId: userId }, select: { ville: true, secteur: true } }),
+      prisma.prospect.findMany({ where: { vendeurId: userId, source: { in: ['BRUTE', 'MANUELLE'] } }, select: { ville: true, secteur: true } }),
     ]);
     const statusCounts = statsByStatus.reduce((a, s) => { a[s.statutAppel || 'NULL'] = s._count; return a; }, {});
 

@@ -509,15 +509,21 @@ function showApp(){
   var r=user.role||'vendeur';
   document.getElementById('uRole').textContent=isAdmin()?'Admin':(r==='referent'?'Referent':'Vendeur');
   // Role-based tab visibility
+  // Tabs order: [0]=brute [1]=mesfiches [2]=leads(Premium) [3]=kpis [4]=equipe [5]=admin
   var tabs=document.querySelectorAll('.tabs .tab');
   tabs.forEach(function(t){t.style.display='';});// show all first
+  if(r==='vendeur'){
+    tabs[0].style.display='none';// Base brute
+    tabs[4].style.display='none';// Mon equipe
+    tabs[5].style.display='none';// Admin
+  } else if(r==='referent'){
+    tabs[0].style.display='none';// Base brute
+    tabs[5].style.display='none';// Admin
+  } else {
+    // Admin: voit tout sauf Mon equipe (optionnel, on le garde visible)
+  }
   document.getElementById('tabAdmin').style.display=isAdmin()?'':'none';
   document.getElementById('tabEquipe').style.display=(r==='referent'||r==='admin')?'':'none';
-  if(r==='vendeur'){
-    // Vendeur: hide Base brute, Base Premium
-    tabs[0].style.display='none';// Base brute
-    tabs[2].style.display='none';// Base Premium
-  }
   if(r==='admin'||r==='referent'){document.getElementById('kpiViewToggle').style.display='block';currentKpiView='team';}
   else{document.getElementById('kpiViewToggle').style.display='none';currentKpiView='me';}
   startHeartbeat();
