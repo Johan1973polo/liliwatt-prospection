@@ -1277,7 +1277,7 @@ async function loadAdminVendeurDropdown() {
     const sheets = await fetch('/api/admin/vendeurs-list', { headers: { 'Authorization': 'Bearer ' + token } });
     const d = await sheets.json();
     const sel = document.getElementById('leadVendeur');
-    sel.innerHTML = '<option value="">Vendeur cible...</option>' + (d.vendeurs || []).map(v => '<option value="' + v.email + '">' + (v.prenom || '') + ' ' + v.nom + '</option>').join('');
+    sel.innerHTML = '<option value="">Vendeur cible...</option>' + (d.vendeurs || []).map(v => '<option value="' + v.email + '">' + (v.role==='referent'?'👤 ':'') + (v.prenom || '') + ' ' + v.nom + (v.role==='referent'?' (Ref.)':'') + '</option>').join('');
   } catch(e) {}
 }
 
@@ -1714,7 +1714,7 @@ async function openScrapeAttribuerModal(){
     var r=await fetch('/api/admin/vendeurs-list',{headers:{'Authorization':'Bearer '+token}});
     var d=await r.json();var sel=document.getElementById('scrapeAttrVendeur');
     sel.innerHTML='<option value="">— Choisir un vendeur —</option>';
-    (d.vendeurs||d||[]).forEach(function(v){var o=document.createElement('option');o.value=v.id;o.textContent=(v.prenom||v.firstName||'')+' '+(v.nom||v.lastName||'')+' ('+v.email+')';sel.appendChild(o);});
+    (d.vendeurs||d||[]).forEach(function(v){var o=document.createElement('option');o.value=v.id;o.textContent=(v.role==='referent'?'👤 ':'')+(v.prenom||v.firstName||'')+' '+(v.nom||v.lastName||'')+(v.role==='referent'?' (Ref.)':'')+' ('+v.email+')';sel.appendChild(o);});
   }catch(e){console.error(e);}
   if(!scrapeAttrVilles){try{var r2=await fetch('/data/villes-france.json');scrapeAttrVilles=await r2.json();}catch(e){scrapeAttrVilles={};}}
   renderDepList('');
@@ -1819,7 +1819,7 @@ async function openAttributionPremiumModal(){
     document.getElementById('pStatutsList').innerHTML=(d.statuts||[]).map(function(s){return '<label style="display:flex;align-items:center;gap:6px;padding:8px 12px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="p-statut-cb" value="'+s.statut+'" '+(s.statut==='Tunnel en cours'?'checked':'')+'>'+s.statut+' <span style="color:#7c3aed;font-weight:600;">('+s.count.toLocaleString('fr-FR')+')</span></label>';}).join('');
     var vr=await fetch('/api/admin/vendeurs-list',{headers:{'Authorization':'Bearer '+token}});var vd=await vr.json();
     var sel=document.getElementById('pVendeurDest');sel.innerHTML='<option value="">— Vendeur —</option>';
-    (vd.vendeurs||vd||[]).forEach(function(v){var o=document.createElement('option');o.value=v.id;o.textContent=((v.firstName||'')+(v.lastName?' '+v.lastName:''))+' ('+v.email+')';sel.appendChild(o);});
+    (vd.vendeurs||vd||[]).forEach(function(v){var o=document.createElement('option');o.value=v.id;o.textContent=(v.role==='referent'?'👤 ':'')+((v.firstName||'')+(v.lastName?' '+v.lastName:''))+(v.role==='referent'?' (Ref.)':'')+' ('+v.email+')';sel.appendChild(o);});
   }catch(e){console.error(e);}
 }
 function closeAttrPremium(){document.getElementById('modalAttributionPremium').style.display='none';}

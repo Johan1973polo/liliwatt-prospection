@@ -844,8 +844,8 @@ app.get('/api/admin/stats', verifyToken, isAdminMW, async (req, res) => {
     ]);
 
     const vendeurs = await prisma.user.findMany({
-      where: { role: 'VENDEUR', isActive: true },
-      select: { id: true, email: true, firstName: true, lastName: true }
+      where: { role: { in: ['VENDEUR', 'REFERENT'] }, isActive: true },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true }
     });
     const par_vendeur = await Promise.all(vendeurs.map(async v => {
       const [nb_fiches, nb_traitees, nb_signes] = await Promise.all([
@@ -864,14 +864,14 @@ app.get('/api/admin/stats', verifyToken, isAdminMW, async (req, res) => {
 app.get('/api/admin/vendeurs-list', verifyToken, isAdminMW, async (req, res) => {
   try {
     const vendeurs = await prisma.user.findMany({
-      where: { role: 'VENDEUR', isActive: true },
-      select: { id: true, email: true, firstName: true, lastName: true, _count: { select: { prospectsAttribues: true } } },
-      orderBy: { firstName: 'asc' }
+      where: { role: { in: ['VENDEUR', 'REFERENT'] }, isActive: true },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true, _count: { select: { prospectsAttribues: true } } },
+      orderBy: [{ role: 'asc' }, { firstName: 'asc' }]
     });
     res.json({ success: true, vendeurs: vendeurs.map(v => ({
       id: v.id, email: v.email, prenom: v.firstName || '', nom: v.lastName || '',
       firstName: v.firstName, lastName: v.lastName,
-      role: 'vendeur', nbAttribues: v._count.prospectsAttribues
+      role: v.role === 'REFERENT' ? 'referent' : 'vendeur', nbAttribues: v._count.prospectsAttribues
     }))});
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
