@@ -359,7 +359,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
           <div style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:18px;border-radius:14px;"><div style="font-size:11px;letter-spacing:1.5px;font-weight:700;opacity:.9;">🏆 VENTES (CLIENT SIGNE)</div><div style="font-size:36px;font-weight:800;margin-top:6px;" id="kpiVentesValue">0</div><div style="font-size:12px;opacity:.85;">total periode</div></div>
-          <div style="background:#fff;padding:18px;border-radius:14px;border-left:4px solid #f59e0b;box-shadow:0 1px 3px rgba(0,0,0,.06);"><div style="font-size:11px;letter-spacing:1.5px;font-weight:700;color:#6b7280;">📝 FICHES TRAITEES</div><div style="font-size:36px;font-weight:800;color:#f59e0b;margin-top:6px;" id="kpiFichesTraiteesValue">0</div><div style="font-size:12px;color:#6b7280;">avec signataire identifie</div></div>
+          <div style="background:#fff;padding:18px;border-radius:14px;border-left:4px solid #f59e0b;box-shadow:0 1px 3px rgba(0,0,0,.06);"><div style="font-size:11px;letter-spacing:1.5px;font-weight:700;color:#6b7280;">📝 FICHES TRAITEES</div><div style="font-size:36px;font-weight:800;color:#f59e0b;margin-top:6px;" id="kpiFichesTraiteesValue">0</div><div style="font-size:12px;color:#6b7280;">action commerciale realisee</div></div>
         </div>
         <div class="kpi-section-title">Mes ratios commerciaux</div>
         <div class="kpi-ratios-grid" id="kpiRatios"></div>
@@ -393,7 +393,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
           <div style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:18px;border-radius:14px;"><div style="font-size:11px;letter-spacing:1.5px;font-weight:700;opacity:.9;">🏆 VENTES EQUIPE</div><div style="font-size:36px;font-weight:800;margin-top:6px;" id="teamVentesValue">0</div><div style="font-size:12px;opacity:.85;">clients signes</div></div>
-          <div style="background:#fff;padding:18px;border-radius:14px;border-left:4px solid #f59e0b;box-shadow:0 1px 3px rgba(0,0,0,.06);"><div style="font-size:11px;letter-spacing:1.5px;font-weight:700;color:#6b7280;">📝 FICHES TRAITEES</div><div style="font-size:36px;font-weight:800;color:#f59e0b;margin-top:6px;" id="teamFichesTraiteesValue">0</div><div style="font-size:12px;color:#6b7280;">avec signataire identifie</div></div>
+          <div style="background:#fff;padding:18px;border-radius:14px;border-left:4px solid #f59e0b;box-shadow:0 1px 3px rgba(0,0,0,.06);"><div style="font-size:11px;letter-spacing:1.5px;font-weight:700;color:#6b7280;">📝 FICHES TRAITEES</div><div style="font-size:36px;font-weight:800;color:#f59e0b;margin-top:6px;" id="teamFichesTraiteesValue">0</div><div style="font-size:12px;color:#6b7280;">action commerciale realisee</div></div>
         </div>
         <div class="kpi-section-title">Ratios equipe</div>
         <div class="kpi-ratios-grid" id="teamRatios"></div>
@@ -835,7 +835,8 @@ function openStatut(row, sheet, nom, statut, note){
 async function saveStatut(){
   const statut=document.getElementById('mSt').value;
   const note=document.getElementById('mNote').value;
-  const rappel=document.getElementById('mRappelDate').value;
+  const rappelRaw=document.getElementById('mRappelDate').value;
+  const rappel=rappelRaw?new Date(rappelRaw).toISOString():null;
   await fetch('/api/prospects/statut/'+curRow,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({statut,note,date_rappel:rappel,sheet:curSheet})});
   closeM('mStatut');loadBrute();loadKpis();
 }
@@ -1538,7 +1539,7 @@ async function saveDrawerChanges() {
   try {
     var payload = {
       statutAppel: document.getElementById('drawerStatut').value || null,
-      dateRappel: document.getElementById('drawerDateRappel').value ? (document.getElementById('drawerDateRappel').value + 'T' + (document.getElementById('drawerHeureRappel').value || '09:00') + ':00') : null,
+      dateRappel: document.getElementById('drawerDateRappel').value ? new Date(document.getElementById('drawerDateRappel').value + 'T' + (document.getElementById('drawerHeureRappel').value || '09:00') + ':00').toISOString() : null,
       noteAppel: document.getElementById('drawerNotes').value || null,
       raisonSociale: document.getElementById('drawerRaisonSociale').value || null,
       signataire: document.getElementById('drawerSignataire').value || null,
