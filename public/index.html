@@ -558,23 +558,33 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
   </div>
 </div>
 
-<!-- Modal Mail -->
-<div class="modal" id="mMail">
-  <div class="modal-box">
-    <button class="close" onclick="closeM('mMail')">✕</button>
-    <h3>📧 Envoyer mail RGPD</h3>
-    <label>Nom du gérant</label>
-    <input type="text" id="mGerant" placeholder="M. Dupont">
-    <label>Email destinataire</label>
-    <input type="email" id="mEmailDest" placeholder="gerant@societe.fr">
-    <div style="margin:14px 0;padding:14px;background:#faf5ff;border-radius:10px;border:1px solid #e9d5ff;font-size:12px;color:#374151;line-height:1.6;">
-      <strong>Aperçu :</strong><br>
-      Suite à notre entretien téléphonique, merci de transmettre :<br>
-      • Facture hiver + été électricité<br>
-      • Facture gaz (si applicable)<br>
-      <em style="color:#7c3aed;">[Lien formulaire RGPD personnel]</em>
+<!-- Modal Mail RGPD -->
+<div id="mMail" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:5000;display:none;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:white;border-radius:16px;padding:24px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 style="margin:0;font-size:18px;">📧 Envoyer le mandat RGPD</h2>
+      <button onclick="closeM('mMail')" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280;">×</button>
     </div>
-    <button class="btn btn-pink" onclick="sendMail()" style="width:100%;" id="btnSendMail">📧 Envoyer depuis <span id="mFromEmail"></span></button>
+    <div id="rgpdModalContext" style="margin-bottom:16px;padding:10px 14px;background:#f3f0ff;border-radius:8px;font-size:13px;color:#5b21b6;">
+      <strong id="rgpdRaisonSociale">—</strong>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;font-weight:600;">SIGNATAIRE / CONTACT</label>
+      <input type="text" id="mGerant" placeholder="Prenom Nom du signataire" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;font-weight:600;">✉️ EMAIL DESTINATAIRE</label>
+      <input type="email" id="mEmailDest" placeholder="contact@exemple.fr" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px;font-weight:600;">📞 TELEPHONE (optionnel)</label>
+      <input type="tel" id="mTelephone" placeholder="06 12 34 56 78" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;box-sizing:border-box;">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button onclick="closeM('mMail')" style="flex:1;padding:12px;background:#f3f4f6;border:none;border-radius:10px;cursor:pointer;font-size:14px;">Annuler</button>
+      <button id="btnSendMail" onclick="sendMail()" style="flex:2;padding:12px;background:linear-gradient(135deg,#7c3aed,#d946ef);color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px;">📧 Envoyer le mandat RGPD</button>
+    </div>
+    <div id="rgpdModalError" style="display:none;margin-top:10px;padding:10px;background:#fee2e2;color:#991b1b;border-radius:8px;font-size:13px;"></div>
   </div>
 </div>
 
@@ -807,27 +817,34 @@ async function saveStatut(){
   closeM('mStatut');loadBrute();loadKpis();
 }
 
-// ===== MODAL MAIL =====
+// ===== MODAL MAIL RGPD =====
 function openMail(row, sheet, nom){
   curRow=row;curSheet=sheet;
-  document.getElementById('mGerant').value='';
-  document.getElementById('mEmailDest').value='';
-  document.getElementById('mFromEmail').textContent=user.email||'';
-  document.getElementById('mMail').style.display='block';
+  var p=_prospectsByRow[row]||{};
+  document.getElementById('rgpdRaisonSociale').textContent=p.raison_sociale||nom||'—';
+  document.getElementById('mGerant').value=p.signataire||'';
+  document.getElementById('mEmailDest').value=p.email||'';
+  document.getElementById('mTelephone').value=p.telephone||'';
+  document.getElementById('rgpdModalError').style.display='none';
+  var btn=document.getElementById('btnSendMail');btn.disabled=false;btn.textContent='📧 Envoyer le mandat RGPD';
+  document.getElementById('mMail').style.display='flex';
+  setTimeout(function(){document.getElementById('mGerant').focus();},100);
 }
 
 async function sendMail(){
-  const gerant=document.getElementById('mGerant').value;
-  const email=document.getElementById('mEmailDest').value;
-  if(!email){alert('Email requis');return;}
-  const btn=document.getElementById('btnSendMail');btn.disabled=true;btn.textContent='⏳ Envoi...';
+  var errEl=document.getElementById('rgpdModalError');errEl.style.display='none';
+  var signataire=document.getElementById('mGerant').value.trim();
+  var email=document.getElementById('mEmailDest').value.trim();
+  var telephone=document.getElementById('mTelephone').value.trim();
+  if(!signataire){errEl.textContent='⚠️ Le nom du signataire est requis';errEl.style.display='block';return;}
+  if(!email||email.indexOf('@')<1){errEl.textContent='⚠️ Email destinataire invalide';errEl.style.display='block';return;}
+  var btn=document.getElementById('btnSendMail');btn.disabled=true;btn.textContent='⏳ Envoi en cours...';
   try{
-    const r=await fetch('/api/prospects/mail/'+curRow,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({email_destinataire:email,nom_gerant:gerant,sheet:curSheet})});
-    const d=await r.json();
-    if(d.success){alert('✅ Mail envoyé à '+email);closeM('mMail');}
-    else alert('❌ '+d.error);
-  }catch(e){alert('Erreur réseau');}
-  btn.disabled=false;btn.textContent='📧 Envoyer depuis '+user.email;
+    var r=await fetch('/api/prospects/mail/'+curRow,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({email_destinataire:email,nom_gerant:signataire,telephone:telephone,sheet:curSheet})});
+    var d=await r.json();
+    if(d.success){closeM('mMail');alert('✅ Mandat RGPD envoye a '+email);if(currentTab==='mesfiches')loadMesFiches();else if(currentTab==='leads')loadLeads();}
+    else{errEl.textContent='❌ '+(d.error||'Erreur envoi');errEl.style.display='block';btn.disabled=false;btn.textContent='📧 Envoyer le mandat RGPD';}
+  }catch(e){errEl.textContent='❌ '+e.message;errEl.style.display='block';btn.disabled=false;btn.textContent='📧 Envoyer le mandat RGPD';}
 }
 
 function closeM(id){document.getElementById(id).style.display='none';}
@@ -1418,6 +1435,7 @@ var _currentDrawerId = null;
 function openFicheInDrawer(p) {
   if (!p) return;
   _currentDrawerId = p._row || p.id;
+  _prospectsByRow[_currentDrawerId] = p;
   document.getElementById('drawerTitle').innerText = p.raison_sociale || p.raisonSociale || '(Sans nom)';
   document.getElementById('drawerSubtitle').innerText = (p.ville||'') + (p.codePostal ? ' · ' + p.codePostal : '');
   // Action commerciale
@@ -1492,19 +1510,9 @@ async function saveDrawerChanges() {
     } else { var d = await r.json(); alert('Erreur: '+(d.error||'')); btn.disabled = false; btn.innerText = '💾 Enregistrer tous les changements'; }
   } catch(e) { alert('Erreur: '+e.message); btn.disabled = false; btn.innerText = '💾 Enregistrer tous les changements'; }
 }
-async function sendRgpdFromDrawer() {
+function sendRgpdFromDrawer() {
   if (!_currentDrawerId) return;
-  var email = prompt('Email du destinataire RGPD :');
-  if (!email) return;
-  var btn = document.getElementById('drawerRgpdBtn'); btn.disabled = true; btn.innerText = '⏳ Envoi...';
-  try {
-    var r = await fetch('/api/prospects/mail/'+_currentDrawerId, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify({email_destinataire:email}) });
-    if (r.ok) {
-      btn.innerText = '✅ Envoye !'; btn.style.background = '#10b981';
-      document.getElementById('drawerRgpdStatus').innerText = '✅ RGPD envoye'; document.getElementById('drawerRgpdStatus').style.color = '#10b981';
-      setTimeout(function(){ btn.innerText = '📧 Renvoyer le mandat'; btn.style.background = '#a8a29e'; btn.disabled = false; }, 2000);
-    } else { var d = await r.json(); alert('Erreur: '+(d.error||'')); btn.disabled = false; btn.innerText = '📧 Envoyer le mandat RGPD'; }
-  } catch(e) { alert('Erreur: '+e.message); btn.disabled = false; btn.innerText = '📧 Envoyer le mandat RGPD'; }
+  openMail(_currentDrawerId, curSheet||'MES FICHES', '');
 }
 
 // ===== FICHE MANUELLE =====

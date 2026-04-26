@@ -454,8 +454,10 @@ app.post('/api/prospects/mail/:id', verifyToken, async (req, res) => {
     const prospect = await prisma.prospect.findUnique({ where: { id } });
     if (!prospect) return res.status(404).json({ error: 'Fiche introuvable' });
 
-    // Email destinataire : depuis le body OU depuis la fiche
+    // Champs modifiables depuis le modal RGPD
     const emailDest = req.body.email_destinataire || prospect.email;
+    const signataire = req.body.nom_gerant || prospect.signataire;
+    const telephone = req.body.telephone || prospect.telephone;
     if (!emailDest) return res.status(400).json({ error: 'Aucun email pour ce prospect. Renseigne-le dans la fiche.' });
 
     // Infos vendeur pour signature
@@ -470,7 +472,7 @@ app.post('/api/prospects/mail/:id', verifyToken, async (req, res) => {
     const nom = vendeur.lastName || '';
     const nomComplet = `${prenom} ${nom}`.trim() || 'Votre conseiller';
     const phoneLine = vendeur.phone ? `<tr><td style="padding:4px 0;color:#7c3aed;font-weight:600;">📞</td><td style="padding:4px 0 4px 8px;">${vendeur.phone}</td></tr>` : '';
-    const prospectNom = prospect.signataire || prospect.raisonSociale || 'Madame, Monsieur';
+    const prospectNom = signataire || prospect.raisonSociale || 'Madame, Monsieur';
     // token_rgpd est soit une URL complete, soit juste le token
     const tokenRgpd = req.user.token_rgpd || '';
     const rgpdLink = tokenRgpd.startsWith('http') ? tokenRgpd : `https://liliwatt-courtier.onrender.com/rgpd/${tokenRgpd}`;
@@ -521,7 +523,7 @@ app.post('/api/prospects/mail/:id', verifyToken, async (req, res) => {
     const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST || 'smtp.zoho.eu', port: parseInt(process.env.SMTP_PORT || '465'), secure: true, auth: { user: smtpUser, pass: smtpPass } });
     await transporter.sendMail({ from: `"LILIWATT - ${nomComplet}" <${smtpUser}>`, replyTo: vendeur.email, to: emailDest, subject: 'Mandat de gestion energie - LILIWATT', html });
 
-    await prisma.prospect.update({ where: { id }, data: { rgpdEnvoye: true, emailEnvoyeA: emailDest } });
+    await prisma.prospect.update({ where: { id }, data: { rgpdEnvoye: true, emailEnvoyeA: emailDest, ...(signataire && { signataire }), ...(emailDest && { email: emailDest }), ...(telephone && { telephone }) } });
     await prisma.activityLog.create({ data: { userId, prospectId: id, type: 'RGPD_SENT', metadata: { destinataire: emailDest, envoyeDe: smtpUser, replyTo: vendeur.email } } });
 
     console.log(`📧 RGPD envoye a ${emailDest} via ${smtpUser} (replyTo: ${vendeur.email})`);
