@@ -269,7 +269,20 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         <h2 style="margin:0;font-size:24px;font-weight:800;color:#1c1917;">📂 Mes fiches</h2>
         <div id="mesFichesTotal" style="color:#78716c;font-weight:600;font-size:14px;">0 fiches</div>
       </div>
-      <div id="mesFichesFiltres" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;"></div>
+      <div style="margin-bottom:14px;"><select id="statutFilter" onchange="setMesFichesStatut(this.value)" style="padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;font-size:14px;cursor:pointer;min-width:260px;">
+        <option value="tous">📂 Toutes les fiches (0)</option>
+        <option value="favoris">⭐ Favoris (0)</option>
+        <option value="A_APPELER">📞 A appeler (0)</option>
+        <option value="APPELE">✅ Appele (0)</option>
+        <option value="A_RAPPELER">🔄 A rappeler (0)</option>
+        <option value="INTERESSE">🟢 Interesse (0)</option>
+        <option value="ATTENTE_DOCUMENTS">📄 Attente documents (0)</option>
+        <option value="DOSSIER_RECU">📦 Dossier recu (0)</option>
+        <option value="CLIENT_SIGNE">🏆 Client signe (0)</option>
+        <option value="PAS_INTERESSE">❌ Pas interesse (0)</option>
+        <option value="NE_REPOND_PAS">📵 Ne repond pas (0)</option>
+        <option value="FAUX_NUMERO">🚫 Faux numero (0)</option>
+      </select></div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
         <input type="text" id="mesFichesSearch" placeholder="🔍 Rechercher..." style="flex:1;min-width:200px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;">
         <select id="mesFichesVille" onchange="loadMesFiches()" style="padding:10px;border:1px solid #e5e7eb;border-radius:8px;min-width:180px;font-size:13px;"><option value="all">📍 Toutes les villes</option></select>
@@ -287,7 +300,10 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
         <h3 style="color:#1e1b4b;">💎 Base Premium — Contacts attribués</h3>
         <button class="btn btn-sm" onclick="loadLeads()">🔄</button>
       </div>
-      <div id="leadsFiltres" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
+      <div style="margin-bottom:12px;"><select id="statutFilterLeads" onchange="loadLeads(this.value)" style="padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;font-size:14px;cursor:pointer;min-width:260px;">
+        <option value="all">📂 Toutes (0)</option>
+        <option value="favoris">⭐ Favoris (0)</option>
+      </select></div>
       <div id="leadsList"><p style="color:#9ca3af;text-align:center;padding:20px;">Cliquez sur 🔄</p></div>
     </div>
 
@@ -676,12 +692,10 @@ async function loadLeads(filter){
     if(currentLeadsFilter==='favoris')url+='?statut=favoris';
     const r=await fetch(url,{headers:{'Authorization':'Bearer '+token}});
     const d=await r.json();
-    // Render pills
+    // Update dropdown counts
     var fc=d.favorisCount||0;var total=(d.prospects||[]).length;
-    var fl=document.getElementById('leadsFiltres');
-    if(fl){
-      var pills=[{k:'all',l:'Toutes',c:currentLeadsFilter==='all'?total:'-'},{k:'favoris',l:'⭐ Favoris',c:fc}];
-      fl.innerHTML=pills.map(function(p){var act=currentLeadsFilter===p.k;return '<button onclick="loadLeads(\''+p.k+'\')" style="padding:8px 14px;background:'+(act?'#1c1917':'#fff')+';color:'+(act?'#fff':'#44403c')+';border:1px solid #e7e5e4;border-radius:99px;cursor:pointer;font-weight:600;font-size:13px;">'+p.l+' ('+p.c+')</button>';}).join('');
+    var sel=document.getElementById('statutFilterLeads');
+    if(sel){Array.from(sel.options).forEach(function(o){if(o.value==='all')o.text='📂 Toutes ('+total+')';if(o.value==='favoris')o.text='⭐ Favoris ('+fc+')';});sel.value=currentLeadsFilter;}
     }
     renderCards(d.prospects||[], div, 'LEADS OHM');
   }catch(e){div.innerHTML='<p style="color:#ef4444;">Erreur reseau</p>';}
@@ -1000,22 +1014,14 @@ function updateMesFichesBadge(total){
   if(t)t.innerText=total+' fiche'+(total>1?'s':'');
 }
 function renderMesFichesFiltres(counts,total){
-  var filtres=[
-    {key:'tous',label:'Toutes',count:total},
-    {key:'favoris',label:'⭐ Favoris',count:counts.favoris||0},
-    {key:'A_APPELER',label:'📞 A appeler',count:counts.A_APPELER||0},
-    {key:'A_RAPPELER',label:'🔄 A rappeler',count:counts.A_RAPPELER||0},
-    {key:'INTERESSE',label:'🟢 Interesse',count:counts.INTERESSE||0},
-    {key:'ATTENTE_DOCUMENTS',label:'📄 Attente docs',count:counts.ATTENTE_DOCUMENTS||0},
-    {key:'DOSSIER_RECU',label:'✅ Dossier recu',count:counts.DOSSIER_RECU||0},
-    {key:'CLIENT_SIGNE',label:'🏆 Signe',count:counts.CLIENT_SIGNE||0},
-    {key:'PAS_INTERESSE',label:'❌ Pas interesse',count:counts.PAS_INTERESSE||0},
-    {key:'NE_REPOND_PAS',label:'📵 NRP',count:counts.NE_REPOND_PAS||0}
-  ];
-  document.getElementById('mesFichesFiltres').innerHTML=filtres.filter(function(f){return f.count>0||f.key==='tous';}).map(function(f){
-    var act=currentMesFichesStatut===f.key;
-    return '<button onclick="setMesFichesStatut(\''+f.key+'\')" style="padding:8px 14px;background:'+(act?'#1c1917':'#fff')+';color:'+(act?'#fff':'#44403c')+';border:1px solid #e7e5e4;border-radius:99px;cursor:pointer;font-weight:600;font-size:13px;">'+f.label+' <span style="opacity:0.6;">('+f.count+')</span></button>';
-  }).join('');
+  var labels={'tous':'📂 Toutes les fiches','favoris':'⭐ Favoris','A_APPELER':'📞 A appeler','APPELE':'✅ Appele','A_RAPPELER':'🔄 A rappeler','INTERESSE':'🟢 Interesse','ATTENTE_DOCUMENTS':'📄 Attente docs','DOSSIER_RECU':'📦 Dossier recu','CLIENT_SIGNE':'🏆 Client signe','PAS_INTERESSE':'❌ Pas interesse','NE_REPOND_PAS':'📵 Ne repond pas','FAUX_NUMERO':'🚫 Faux numero'};
+  var sel=document.getElementById('statutFilter');if(!sel)return;
+  var cur=sel.value;
+  Array.from(sel.options).forEach(function(opt){
+    var k=opt.value;var c=k==='tous'?total:(counts[k]||0);
+    opt.text=(labels[k]||k)+' ('+c+')';
+  });
+  sel.value=cur;
 }
 function setMesFichesStatut(s){currentMesFichesStatut=s;loadMesFiches();}
 function renderMesFichesList(prospects){
