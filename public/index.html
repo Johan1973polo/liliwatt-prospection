@@ -438,6 +438,11 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
           <div style="font-weight:700;font-size:14px;">Vendeurs</div>
           <div style="font-size:11px;opacity:.85;">Desactiver / reactiver</div>
         </div>
+        <div onclick="openResetKpi()" style="background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #dc2626;transition:all .15s;">
+          <div style="font-size:32px;margin-bottom:6px;">🚨</div>
+          <div style="font-weight:700;font-size:14px;">Reset KPI</div>
+          <div style="font-size:11px;opacity:.85;">Remettre a zero</div>
+        </div>
       </div>
       <!-- Stats Base section -->
       <div id="statsBaseSection" style="display:none;margin-top:20px;">
@@ -465,6 +470,33 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
             <div id="sb-vendeurs" style="font-size:28px;font-weight:800;">—</div>
             <div style="margin-top:8px;font-size:12px;">✍️ Fiches manuelles : <strong id="sb-manuelles">—</strong></div>
           </div>
+        </div>
+      </div>
+
+      <!-- Reset KPI section -->
+      <div id="resetKpiSection" style="display:none;margin-top:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h3 style="margin:0;">🚨 Reset KPI</h3>
+          <button onclick="loadResetKpi()" style="padding:6px 12px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;">🔄</button>
+        </div>
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:14px;margin-bottom:16px;font-size:13px;color:#991b1b;">
+          <strong>Attention :</strong> Le reset supprime les events, sessions et fiches manuelles. Les fiches scrapees restent attribuees mais repassent en "A appeler". <strong>Irreversible.</strong>
+        </div>
+        <button onclick="confirmResetAll()" style="width:100%;padding:14px;background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;margin-bottom:20px;">🚨 RESET TOUT LE MONDE</button>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr style="background:#f9fafb;text-align:left;">
+              <th style="padding:10px 8px;border-bottom:2px solid #e5e7eb;">User</th>
+              <th style="padding:10px 8px;border-bottom:2px solid #e5e7eb;">Role</th>
+              <th style="padding:10px 8px;border-bottom:2px solid #e5e7eb;">Ref.</th>
+              <th style="padding:10px 8px;border-bottom:2px solid #e5e7eb;text-align:center;">Events</th>
+              <th style="padding:10px 8px;border-bottom:2px solid #e5e7eb;text-align:center;">Sessions</th>
+              <th style="padding:10px 8px;border-bottom:2px solid #e5e7eb;text-align:center;">Manuelles</th>
+              <th style="padding:10px 8px;border-bottom:2px solid #e5e7eb;text-align:center;">Scrapees</th>
+              <th style="padding:10px 8px;border-bottom:2px solid #e5e7eb;">Action</th>
+            </tr></thead>
+            <tbody id="resetUsersList"></tbody>
+          </table>
         </div>
       </div>
 
@@ -1206,6 +1238,54 @@ async function loadPresenceKPI(){
 
 // ===== GERER VENDEURS (admin) =====
 function openGererVendeurs(){var s=document.getElementById('gererVendeursSection');s.style.display=s.style.display==='none'?'block':'none';if(s.style.display==='block')loadGererVendeurs();}
+
+// ===== RESET KPI =====
+function openResetKpi(){
+  document.querySelectorAll('[id$="Section"]').forEach(function(el){if(el.id!=='resetKpiSection')el.style.display='none';});
+  var s=document.getElementById('resetKpiSection');s.style.display=s.style.display==='none'?'block':'none';
+  if(s.style.display==='block')loadResetKpi();
+}
+async function loadResetKpi(){
+  try{
+    var r=await fetch('/api/admin/users-stats',{headers:{'Authorization':'Bearer '+token}});
+    var d=await r.json();if(!d.ok)return;
+    var tb=document.getElementById('resetUsersList');
+    tb.innerHTML=(d.users||[]).map(function(u){
+      var hasData=u.events>0||u.sessions>0||u.fichesManu>0;
+      return '<tr style="border-bottom:1px solid #f3f4f6;">'+
+        '<td style="padding:10px 8px;font-weight:600;">'+(u.firstName||'')+' '+(u.lastName||'')+'</td>'+
+        '<td style="padding:10px 8px;"><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:'+(u.role==='REFERENT'?'#f3f0ff;color:#7c3aed':'#f0fdf4;color:#16a34a')+';">'+u.role+'</span></td>'+
+        '<td style="padding:10px 8px;color:#6b7280;font-size:12px;">'+(u.referentName||'—')+'</td>'+
+        '<td style="padding:10px 8px;text-align:center;font-weight:600;">'+u.events+'</td>'+
+        '<td style="padding:10px 8px;text-align:center;">'+u.sessions+'</td>'+
+        '<td style="padding:10px 8px;text-align:center;">'+u.fichesManu+'</td>'+
+        '<td style="padding:10px 8px;text-align:center;">'+u.fichesScrapees+'</td>'+
+        '<td style="padding:10px 8px;">'+(hasData?'<button onclick="confirmResetUser(\''+u.id+'\',\''+(u.firstName||'')+' '+(u.lastName||'')+'\')" style="padding:6px 14px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">Reset</button>':'<span style="color:#9ca3af;font-size:12px;">Vide</span>')+'</td>'+
+      '</tr>';
+    }).join('');
+  }catch(e){console.error(e);}
+}
+function confirmResetUser(uid,nom){
+  var input=prompt('Reset KPI de '+nom+'\n\nSupprimer events, sessions, fiches manuelles.\nFiches scrapees remises en A_APPELER.\n\nTape RESET pour confirmer :');
+  if(input!=='RESET')return;
+  doReset(uid);
+}
+function confirmResetAll(){
+  var input=prompt('🚨 RESET TOUT LE MONDE 🚨\n\nTous les vendeurs ET referents seront remis a zero.\nEvents, sessions, fiches manuelles supprimes.\nFiches scrapees en A_APPELER.\n\nTape RESET TOUT pour confirmer :');
+  if(input!=='RESET TOUT')return;
+  doReset('all');
+}
+async function doReset(uid){
+  try{
+    var r=await fetch('/api/admin/reset-kpi',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({userId:uid,confirmation:'RESET'})});
+    var d=await r.json();
+    if(d.ok){
+      var t=d.totals;
+      alert('Reset effectue !\n\n'+t.usersResetted+' user(s) reset\n'+t.events+' events supprimes\n'+t.sessions+' sessions supprimees\n'+t.fichesManu+' fiches manuelles supprimees\n'+t.fichesReset+' fiches scrapees remises a zero');
+      loadResetKpi();
+    }else{alert('Erreur : '+(d.error||''));}
+  }catch(e){alert('Erreur reseau');}
+}
 async function loadGererVendeurs(){
   try{var r=await fetch('/api/admin/gerer-vendeurs',{headers:{'Authorization':'Bearer '+token}});var d=await r.json();if(!d.success)return;
   document.getElementById('gererVendeursList').innerHTML=d.users.map(function(u){
