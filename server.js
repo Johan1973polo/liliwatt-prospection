@@ -371,7 +371,9 @@ app.post('/api/prospects/mail/:id', verifyToken, async (req, res) => {
     const nomComplet = `${prenom} ${nom}`.trim() || 'Votre conseiller';
     const phoneLine = vendeur.phone ? `<tr><td style="padding:4px 0;color:#7c3aed;font-weight:600;">📞</td><td style="padding:4px 0 4px 8px;">${vendeur.phone}</td></tr>` : '';
     const prospectNom = prospect.signataire || prospect.raisonSociale || 'Madame, Monsieur';
-    const rgpdLink = `https://liliwatt-courtier.onrender.com/rgpd/${req.user.token_rgpd}`;
+    // token_rgpd est soit une URL complete, soit juste le token
+    const tokenRgpd = req.user.token_rgpd || '';
+    const rgpdLink = tokenRgpd.startsWith('http') ? tokenRgpd : `https://liliwatt-courtier.onrender.com/rgpd/${tokenRgpd}`;
 
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#f5f3ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
