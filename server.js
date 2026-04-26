@@ -10,6 +10,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'liliwatt-prospection-secret-2026';
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/data', express.static(path.join(__dirname, 'data')));
 
 // ===== PRISMA =====
 const { prisma } = require('./lib/db');
@@ -844,6 +845,80 @@ app.post('/api/admin/scraper', verifyToken, isAdminMW, async (req, res) => {
     res.json({ success: true, secteur, ville: villeClean, inserted, skipped, duration,
       message: `${inserted} prospect${inserted > 1 ? 's' : ''} ajoute${inserted > 1 ? 's' : ''}, ${skipped} doublon${skipped > 1 ? 's' : ''} en ${duration}s` });
   } catch(e) { console.error('Scraper error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== POST /api/admin/scrape-attribuer =====
+const villesFrance = require('./data/villes-france.json');
+
+app.post('/api/admin/scrape-attribuer', verifyToken, isAdminMW, async (req, res) => {
+  try {
+    const { vendeurId, departements, secteurs } = req.body;
+    if (!vendeurId) return res.status(400).json({ error: 'vendeurId requis' });
+    if (!departements?.length) return res.status(400).json({ error: 'Au moins un departement' });
+    if (!secteurs?.length) return res.status(400).json({ error: 'Au moins un secteur' });
+
+    const vendeur = await prisma.user.findUnique({ where: { id: vendeurId }, select: { id: true, firstName: true, lastName: true, email: true } });
+    if (!vendeur) return res.status(404).json({ error: 'Vendeur introuvable' });
+
+    const allowed = ['restaurant','hotel','boulangerie','laverie','garage','supermarche','salle_sport','spa','bar','camping','pressing','piscine'];
+    const secteursOk = secteurs.filter(s => allowed.includes(s));
+    if (!secteursOk.length) return res.status(400).json({ error: 'Aucun secteur valide' });
+
+    // Build task list
+    const taches = [];
+    for (const dep of departements) {
+      const data = villesFrance[dep];
+      if (!data) continue;
+      for (const ville of data.villes.slice(0, 10)) {
+        for (const secteur of secteursOk) {
+          taches.push({ dep, ville, secteur });
+        }
+      }
+    }
+    if (!taches.length) return res.status(400).json({ error: 'Aucune tache generee' });
+
+    console.log(`🚀 Scrape attribue pour ${vendeur.firstName} ${vendeur.lastName}: ${taches.length} taches`);
+
+    const { execSync } = require('child_process');
+    const t0 = Date.now();
+    let totalInserted = 0, totalSkipped = 0, totalReassigned = 0, errors = [];
+
+    for (let i = 0; i < taches.length; i++) {
+      const { ville, secteur } = taches[i];
+      try {
+        const output = execSync(`python3 scraper_neon.py "${secteur}" "${ville.replace(/"/g, '')}"`, {
+          timeout: 90000, env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL, GOOGLE_PLACES_API_KEY: process.env.GOOGLE_PLACES_API_KEY }
+        }).toString();
+        const match = output.match(/INSERTED:(\d+)\|SKIPPED:(\d+)/);
+        const inserted = match ? parseInt(match[1]) : 0;
+        const skipped = match ? parseInt(match[2]) : 0;
+        totalInserted += inserted;
+        totalSkipped += skipped;
+
+        // Attribuer les fiches libres de cette ville/secteur au vendeur
+        const assigned = await prisma.prospect.updateMany({
+          where: { source: 'BRUTE', vendeurId: null, ville: { contains: ville, mode: 'insensitive' } },
+          data: { vendeurId: vendeurId }
+        });
+        totalReassigned += assigned.count;
+
+        if ((i + 1) % 10 === 0) console.log(`  [${i+1}/${taches.length}] ${ville} ${secteur}: +${inserted}`);
+      } catch(err) {
+        errors.push({ ville, secteur, error: err.message.substring(0, 100) });
+      }
+    }
+
+    const duration = Math.round((Date.now() - t0) / 1000);
+    try { await prisma.activityLog.create({ data: { userId: req.user.id, type: 'PROSPECT_CREATED_MANUAL', metadata: { action: 'scrape_attribuer', vendeurId, vendeurNom: `${vendeur.firstName} ${vendeur.lastName}`, departements, secteurs: secteursOk, totalInserted, totalReassigned, durationSec: duration } } }); } catch(e) {}
+
+    console.log(`✅ Scrape attribue termine: ${totalInserted} inseres, ${totalReassigned} attribues, ${duration}s`);
+    res.json({
+      success: true, vendeur: { id: vendeur.id, nom: `${vendeur.firstName} ${vendeur.lastName}` },
+      totalInserted, totalSkipped, totalReassigned, duration,
+      tachesEffectuees: taches.length - errors.length, tachesEnErreur: errors.length,
+      message: `${totalInserted + totalReassigned} fiches attribuees a ${vendeur.firstName} en ${duration}s`
+    });
+  } catch(e) { console.error('Scrape-attribuer error:', e); res.status(500).json({ error: e.message }); }
 });
 
 // ===== STATIC =====

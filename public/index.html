@@ -293,7 +293,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
     <!-- ADMIN — visible uniquement si role=admin -->
     <div class="panel" id="tab-admin">
       <!-- Cartes navigation -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
         <div onclick="showAdminSub('stats')" id="acard-stats" style="background:#7c3aed;color:#fff;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #7c3aed;transition:all .15s;">
           <div style="font-size:32px;margin-bottom:6px;">📊</div>
           <div style="font-weight:700;font-size:14px;">Statistiques</div>
@@ -308,6 +308,11 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f3ff;min-height:1
           <div style="font-size:32px;margin-bottom:6px;">💎</div>
           <div style="font-weight:700;font-size:14px;">Attribution</div>
           <div style="font-size:11px;color:#6b7280;">Base Premium</div>
+        </div>
+        <div onclick="openScrapeAttribuerModal()" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-radius:12px;padding:20px;text-align:center;cursor:pointer;border:2px solid #10b981;transition:all .15s;">
+          <div style="font-size:32px;margin-bottom:6px;">🎯</div>
+          <div style="font-weight:700;font-size:14px;">Attribuer</div>
+          <div style="font-size:11px;opacity:.85;">Scrape + attribuer a vendeur</div>
         </div>
       </div>
 
@@ -1320,6 +1325,90 @@ document.addEventListener('DOMContentLoaded', function() {
     </form>
   </div>
 </div>
+
+<!-- MODAL SCRAPE ATTRIBUE -->
+<div id="modalScrapeAttribuer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;z-index:2000;overflow-y:auto;padding:20px;">
+  <div style="background:#fff;border-radius:16px;padding:28px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;">
+    <h2 style="margin:0 0 8px;">🎯 Scraper et attribuer a un vendeur</h2>
+    <p style="color:#6b7280;font-size:14px;margin-bottom:20px;">Scrape Google Places et attribue toutes les fiches au vendeur choisi.</p>
+    <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Vendeur destinataire</label>
+    <select id="scrapeAttrVendeur" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:18px;"><option value="">— Chargement... —</option></select>
+    <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Departements <span id="scrapeAttrDepCount" style="color:#7c3aed;">(0)</span></label>
+    <input type="text" id="scrapeAttrDepSearch" placeholder="🔍 Filtrer (33, Gironde, Paris...)" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;box-sizing:border-box;">
+    <div id="scrapeAttrDepList" style="max-height:200px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;"></div>
+    <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Secteurs <span id="scrapeAttrSectCount" style="color:#7c3aed;">(0)</span></label>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:18px;">
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="hotel"> 🏨 Hotel</label>
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="restaurant"> 🍽️ Restaurant</label>
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="boulangerie"> 🥖 Boulangerie</label>
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="camping"> ⛺ Camping</label>
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="laverie"> 🧺 Laverie</label>
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="garage"> 🔧 Garage</label>
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="supermarche"> 🛒 Supermarche</label>
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="salle_sport"> 💪 Salle sport</label>
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="spa"> 💆 Spa</label>
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="bar"> 🍺 Bar</label>
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="pressing"> 👔 Pressing</label>
+      <label style="display:flex;align-items:center;gap:6px;padding:8px;background:#f5f5f4;border-radius:8px;cursor:pointer;font-size:13px;"><input type="checkbox" class="scrape-attr-secteur" value="piscine"> 🏊 Piscine</label>
+    </div>
+    <div id="scrapeAttrEstimation" style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 14px;border-radius:8px;margin-bottom:18px;font-size:13px;display:none;"><strong>📊 Estimation :</strong><br><span id="scrapeAttrEstText"></span></div>
+    <div id="scrapeAttrStatus" style="display:none;padding:14px;background:#f3f4f6;border-radius:8px;margin-bottom:14px;font-size:13px;"></div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeScrapeAttribuerModal()" style="flex:1;padding:12px;background:#f3f4f6;border:none;border-radius:8px;cursor:pointer;">Annuler</button>
+      <button id="scrapeAttrBtn" onclick="lancerScrapeAttribuer()" style="flex:2;padding:12px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🚀 Lancer le scrape attribue</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var scrapeAttrVilles=null;
+async function openScrapeAttribuerModal(){
+  document.getElementById('modalScrapeAttribuer').style.display='flex';
+  document.getElementById('scrapeAttrStatus').style.display='none';
+  try{
+    var r=await fetch('/api/admin/vendeurs-list',{headers:{'Authorization':'Bearer '+token}});
+    var d=await r.json();var sel=document.getElementById('scrapeAttrVendeur');
+    sel.innerHTML='<option value="">— Choisir un vendeur —</option>';
+    (d.vendeurs||d||[]).forEach(function(v){var o=document.createElement('option');o.value=v.id;o.textContent=(v.prenom||v.firstName||'')+' '+(v.nom||v.lastName||'')+' ('+v.email+')';sel.appendChild(o);});
+  }catch(e){console.error(e);}
+  if(!scrapeAttrVilles){try{var r2=await fetch('/data/villes-france.json');scrapeAttrVilles=await r2.json();}catch(e){scrapeAttrVilles={};}}
+  renderDepList('');
+}
+function renderDepList(filter){
+  var fl=(filter||'').toLowerCase();var list=document.getElementById('scrapeAttrDepList');
+  list.innerHTML=Object.entries(scrapeAttrVilles).filter(function(e){return !fl||e[0].includes(fl)||e[1].nom.toLowerCase().includes(fl);}).map(function(e){
+    return '<label style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:#f5f5f4;border-radius:6px;cursor:pointer;font-size:12px;"><input type="checkbox" class="scrape-attr-dep" value="'+e[0]+'" onchange="updateScrapeAttrEst()"><span><strong>'+e[0]+'</strong> '+e[1].nom+'</span></label>';
+  }).join('');
+}
+document.addEventListener('input',function(e){if(e.target.id==='scrapeAttrDepSearch')renderDepList(e.target.value);});
+document.addEventListener('change',function(e){if(e.target.classList.contains('scrape-attr-secteur'))updateScrapeAttrEst();});
+function updateScrapeAttrEst(){
+  var deps=document.querySelectorAll('.scrape-attr-dep:checked').length;
+  var sects=document.querySelectorAll('.scrape-attr-secteur:checked').length;
+  document.getElementById('scrapeAttrDepCount').innerText='('+deps+')';
+  document.getElementById('scrapeAttrSectCount').innerText='('+sects+')';
+  var est=document.getElementById('scrapeAttrEstimation');
+  if(deps>0&&sects>0){var t=deps*10*sects;document.getElementById('scrapeAttrEstText').innerHTML=deps+' dep × 10 villes × '+sects+' secteur'+(sects>1?'s':'')+' = <strong>'+t+' scrapes</strong><br>Temps estime : <strong>'+Math.ceil(t*0.8/60)+'-'+Math.ceil(t*1.5/60)+' min</strong>';est.style.display='block';}else{est.style.display='none';}
+}
+function closeScrapeAttribuerModal(){document.getElementById('modalScrapeAttribuer').style.display='none';}
+async function lancerScrapeAttribuer(){
+  var vendeurId=document.getElementById('scrapeAttrVendeur').value;
+  var departements=Array.from(document.querySelectorAll('.scrape-attr-dep:checked')).map(function(c){return c.value;});
+  var secteurs=Array.from(document.querySelectorAll('.scrape-attr-secteur:checked')).map(function(c){return c.value;});
+  if(!vendeurId){alert('Choisis un vendeur');return;}if(!departements.length){alert('Coche au moins un departement');return;}if(!secteurs.length){alert('Coche au moins un secteur');return;}
+  var total=departements.length*10*secteurs.length;
+  if(!confirm('Lancer '+total+' scrapes ? Cela peut prendre plusieurs minutes.'))return;
+  var btn=document.getElementById('scrapeAttrBtn');var st=document.getElementById('scrapeAttrStatus');
+  btn.disabled=true;btn.innerText='⏳ Scraping en cours... NE PAS FERMER';
+  st.style.display='block';st.style.background='#fef3c7';st.innerHTML='🔍 Lancement de '+total+' scrapes...<br><small>Estimation: '+Math.ceil(total*0.8/60)+' minutes</small>';
+  try{
+    var r=await fetch('/api/admin/scrape-attribuer',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({vendeurId:vendeurId,departements:departements,secteurs:secteurs})});
+    var d=await r.json();
+    if(r.ok){st.style.background='#d1fae5';st.innerHTML='✅ <strong>'+d.message+'</strong><br>📥 Inseres: '+d.totalInserted+'<br>🔄 Attribues: '+d.totalReassigned+'<br>⏭️ Doublons: '+d.totalSkipped+'<br>⏱ Duree: '+d.duration+'s';btn.innerText='✅ Termine';setTimeout(function(){closeScrapeAttribuerModal();if(typeof loadAdminStats==='function')loadAdminStats();btn.disabled=false;btn.innerText='🚀 Lancer le scrape attribue';},6000);}
+    else{st.style.background='#fee2e2';st.innerHTML='❌ '+d.error+(d.detail?' — '+d.detail:'');btn.disabled=false;btn.innerText='🚀 Reessayer';}
+  }catch(e){st.style.background='#fee2e2';st.innerHTML='❌ '+e.message;btn.disabled=false;btn.innerText='🚀 Reessayer';}
+}
+</script>
 
 </body>
 </html>
