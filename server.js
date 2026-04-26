@@ -791,18 +791,19 @@ app.get('/api/referent/vendeur/:id/kpis', verifyToken, async (req, res) => {
 app.post('/api/prospects/manuelle', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { raisonSociale, telephone, source: sourceManuelle, nomContact, prenomContact, email, siren, adresse, notes } = req.body;
-    if (!raisonSociale || !telephone || !sourceManuelle) return res.status(400).json({ error: 'raisonSociale, telephone et source obligatoires' });
+    const { raisonSociale, telephone, source: sourceManuelle, nomContact, prenomContact, email, siren, adresse, notes, signataire: sigBody, codePostal: cpBody, ville, secteur, segment, energie, noteAppel } = req.body;
+    if (!raisonSociale?.trim()) return res.status(400).json({ error: 'Raison sociale obligatoire' });
 
-    let codePostal = null;
-    if (adresse) { const m = adresse.match(/\b(\d{5})\b/); if (m) codePostal = m[1]; }
-    const signataire = [prenomContact, nomContact].filter(Boolean).join(' ').trim() || null;
+    const cp = cpBody?.trim() || (adresse ? (adresse.match(/\b(\d{5})\b/) || [])[1] : null) || null;
+    const sig = sigBody?.trim() || [prenomContact, nomContact].filter(Boolean).join(' ').trim() || null;
 
     const prospect = await prisma.prospect.create({
       data: {
-        source: 'MANUELLE', raisonSociale: raisonSociale.trim(), telephone: telephone.trim(),
+        source: 'MANUELLE', raisonSociale: raisonSociale.trim(), telephone: telephone?.trim() || null,
         email: email?.trim() || null, siren: siren?.trim() || null, adresse: adresse?.trim() || null,
-        codePostal, signataire, sourceManuelle: sourceManuelle.trim(), noteAppel: notes?.trim() || null,
+        codePostal: cp, ville: ville?.trim() || null, signataire: sig, secteur: secteur?.trim() || null,
+        segment: segment?.trim() || null, energie: energie?.trim() || null,
+        sourceManuelle: sourceManuelle?.trim() || req.user.email, noteAppel: noteAppel?.trim() || notes?.trim() || null,
         vendeurId: userId, statutAppel: 'A_APPELER', isManuelle: true, isVerrouillee: true,
       }
     });
