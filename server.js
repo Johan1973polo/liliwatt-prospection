@@ -71,12 +71,51 @@ app.post('/api/auth/login', async (req, res) => {
   } catch(e) { console.error('Login error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
-// ===== POST /api/heartbeat =====
+// ===== POST /api/heartbeat (+ WorkSession) =====
 app.post('/api/heartbeat', verifyToken, async (req, res) => {
   try {
-    await prisma.user.update({ where: { id: req.user.id }, data: { lastSeen: new Date() } });
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: 'Heartbeat failed' }); }
+    const userId = req.user.id;
+    const now = new Date();
+    await prisma.user.update({ where: { id: userId }, data: { lastSeen: now } });
+
+    const lastActivityMs = req.body?.lastActivity ? parseInt(req.body.lastActivity) : Date.now();
+    const isInactive = (Date.now() - lastActivityMs) > 15 * 60 * 1000;
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    let session = await prisma.workSession.findFirst({ where: { userId, endedAt: null, date: today }, orderBy: { startedAt: 'desc' } });
+
+    if (isInactive && session) {
+      const dur = Math.max(1, Math.round((lastActivityMs - new Date(session.startedAt).getTime()) / 60000));
+      await prisma.workSession.update({ where: { id: session.id }, data: { endedAt: new Date(lastActivityMs), durationMinutes: dur } });
+      session = null;
+    }
+    if (!session && !isInactive) {
+      session = await prisma.workSession.create({ data: { userId, startedAt: now, date: today } });
+    }
+
+    const sessions = await prisma.workSession.findMany({ where: { userId, date: today }, select: { startedAt: true, endedAt: true, durationMinutes: true } });
+    let totalMin = 0;
+    for (const s of sessions) {
+      if (s.endedAt && s.durationMinutes) totalMin += s.durationMinutes;
+      else if (!s.endedAt) totalMin += Math.max(0, Math.round((Date.now() - new Date(s.startedAt).getTime()) / 60000));
+    }
+
+    res.json({ ok: true, sessionId: session?.id || null, totalMinutesToday: totalMin });
+  } catch(e) { console.error('heartbeat error:', e); res.status(500).json({ error: e.message }); }
+});
+
+// ===== GET /api/me/presence =====
+app.get('/api/me/presence', verifyToken, async (req, res) => {
+  try {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const sessions = await prisma.workSession.findMany({ where: { userId: req.user.id, date: today }, select: { startedAt: true, endedAt: true, durationMinutes: true } });
+    let totalMin = 0;
+    for (const s of sessions) {
+      if (s.durationMinutes) totalMin += s.durationMinutes;
+      else if (!s.endedAt) totalMin += Math.round((Date.now() - new Date(s.startedAt).getTime()) / 60000);
+    }
+    res.json({ success: true, totalMinutesToday: totalMin, sessionsCount: sessions.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ===== GET /api/prospects/:id =====
